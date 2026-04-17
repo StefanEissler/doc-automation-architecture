@@ -122,6 +122,17 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+## Daten Initalisierung
+
+### Download des DocILE Benchmark Dataset
+
+Token muss über: https://docs.google.com/forms/u/0/d/e/1FAIpQLSeYaPkF_BOeD2GwBGueVbprESD7Mys-hMAiUj8oVKBmBGnJUw angefordert werden.
+
+```bash
+sudo chmod +x ./scripts/download_dataset.sh
+./scripts/download_dataset.sh TOKEN annotated-trainval data/docile --unzip
+```
+
 ### Kerndependencies
 
 ```toml

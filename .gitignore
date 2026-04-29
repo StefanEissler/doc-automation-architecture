@@ -2,14 +2,14 @@
 __pycache__/
 *.py[oc]
 build/
-dist/
+dist/f
 wheels/
 *.egg-info
 
 # Virtual environments
 .venv
 
-
 .env
 
-data/
+data/*
+!data/data_backup.zip

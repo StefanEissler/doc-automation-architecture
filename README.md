@@ -207,16 +207,14 @@ Jedes Dokument wird als JSON annotiert:
 
 ---
 
-## Literatur (Auswahl)
+## Quellen
+Šimsa, Š., Šulc, M., Uřičář, M., Patel, Y., Hamdi, A., Kocián, M., Skalický, M., Matas, J., Doucet, A., Coustaty, M., & Karatzas, D. (2023, February 11). DocILE Benchmark for Document Information Localization and Extraction. arXiv.Org. https://arxiv.org/abs/2302.05658v2
+Wang, Z., Zhou, Y., Wei, W., Lee, C.-Y., & Tata, S. (2023). VRDU: A Benchmark for Visually-rich Document Understanding. Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, 5184–5193. https://doi.org/10.1145/3580305.3599929
 
-- Yao, S. et al. (2023). ReAct: Synergizing Reasoning and Acting in Language Models. *ICLR 2023*
-- Průcha, P. et al. (2025). Are LLM Agents the New RPA? *arXiv:2509.04198*
-- Zhu, K. et al. (2025). MultiAgentBench. *arXiv:2503.01935*
-- Yehudai, A. et al. (2025). Survey on Evaluation of LLM-based Agents. *arXiv:2503.16416*
 
 ---
 
 > Dieses Repository enthält keine echten Unternehmensdaten.  
-> Alle verwendeten Dokumente sind entweder öffentliche Datensätze (RVL-CDIP, CORD)  
+> Alle verwendeten Dokumente sind entweder öffentliche Datensätze (VRDU, DocILE papers)  
 > oder synthetisch generiert. API-Keys werden ausschließlich lokal via `.env` verwaltet  
 > und sind nicht Teil des Repositories.

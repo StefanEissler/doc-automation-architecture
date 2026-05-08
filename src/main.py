@@ -1,97 +1,94 @@
 from pathlib import Path
 import argparse
 import logging
+from time import perf_counter
 
+from langchain_ollama import OllamaLLM
+
+from src.architectures.c1_rule_based import RuleBasedCondition
+from src.architectures.c2_singe_prompt import SinglePromptCondition
+from src.architectures.c3_ai_agent import SingleAgentCondition
+from src.architectures.c4_multi_ai_agents import MultiAgentCondition
+from src.data_loader import DataLoader
 from src.evaluation import BenchmarkEvaluator
 
 # Basic Logging Configuration
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run the Document Automation Benchmark"
-    )
+def get_llm(provider: str):
+    # if provider == "vertex":
+    #     return ChatVertexAI(model_name="gemini-3-pro", temperature=0)
+    if provider == "ollama":
+        logging.info("Loading Ollama LLM")
+        return OllamaLLM(model="llama3", temperature=0.2)
+    else:
+        raise ValueError(f"Provider {provider} nicht unterstützt.")
 
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Select the system configuration (Condition C1-C4) to evaluate",
-        choices=[
-            "all",
-            "c1_rule_based",
-            "c2_single_prompt",
-            "c3_single_agent",
-            "c4_multi_agent",
-        ],
-        default="all",
-    )
 
-    parser.add_argument(
-        "--complexity",
-        type=str,
-        help="Select the document complexity level (L1-L3)",
-        choices=["all", "l1", "l2", "l3"],
-        default="all",
-    )
-
-    parser.add_argument(
-        "--limit",
-        type=int,
-        help="Limit the number of documents to process for testing purposes",
-        default=None,
-    )
-
-    args = parser.parse_args()
-
+def run_experiment():
     try:
-        evaluator = BenchmarkEvaluator(
-            results_dir=str(PROJECT_ROOT / "results"),
+        logging.info("Starting Document Automation Benchmark Experiment")
+        parser = argparse.ArgumentParser(description="Document Automation Benchmark")
+        parser.add_argument(
+            "--config", type=str, choices=["all", "c1", "c2", "c3", "c4"], default="all"
         )
-        if args.config in ["all", "c1_rule_based"]:
-            from src.architectures.c1_rule_based import run_condition_c1
-
-            logging.info("Starting C1 (Regex/RPA) Evaluation...")
-            run_condition_c1(
-                complexity=args.complexity, limit=args.limit, evaluator=evaluator
-            )
-
-        if args.config in ["all", "c2_single_prompt"]:
-            from architectures.c2_singe_prompt import run_condition_c2
-
-            logging.info("Starting C2 (Single-Prompt LLM) Evaluation...")
-            run_condition_c2(
-                complexity=args.complexity, limit=args.limit, evaluator=evaluator
-            )
-
-        if args.config in ["all", "c3_single_agent"]:
-            from architectures.c3_ai_agent import run_condition_c3
-
-            logging.info("Starting C3 (Single Agent) Evaluation...")
-            run_condition_c3(complexity=args.complexity, limit=args.limit)
-
-        if args.config in ["all", "c4_multi_agent"]:
-            from architectures.c4_multi_ai_agents import run_condition_c4
-
-            logging.info("Starting C4 (Multi Agent) Evaluation...")
-            run_condition_c4(complexity=args.complexity, limit=args.limit)
-
-        evaluator.evaluate(
-            condition_id=args.config,
-            complexity_level=args.complexity,
-            doc_id="doc_001",
-            predicted_data={"field1": "value1", "field2": "value2"},
-            metadata={"tokens": 150, "duration": 2.5},
+        parser.add_argument(
+            "--complexity", type=str, choices=["all", "L1", "L2", "L3"], default="all"
         )
+        parser.add_argument("--limit", type=int, default=None)
+        parser.add_argument(
+            "--provider", type=str, choices=["vertex", "ollama"], default="ollama"
+        )
+
+        args = parser.parse_args()
+
+        evaluator = BenchmarkEvaluator(results_dir=str(PROJECT_ROOT / "results"))
+        loader = DataLoader(data_dir=str(PROJECT_ROOT / "data" / "corpus"))
+        llm = get_llm(args.provider)
+
+        documents = loader.load_docs(complexity=args.complexity, limit=args.limit)
+
+        available_conditions = {
+            "c1": RuleBasedCondition(),
+            "c2": SinglePromptCondition(llm=llm),
+            "c3": SingleAgentCondition(llm=llm),
+            "c4": MultiAgentCondition(llm=llm),
+        }
+
+        conditions_to_run = (
+            available_conditions
+            if args.config == "all"
+            else {args.config: available_conditions[args.config]}
+        )
+
+        for doc in documents:
+            for condition_id, condition_instance in conditions_to_run.items():
+                logging.info(
+                    f"Running {condition_id} on Document {doc.id} (Complexity: {doc.complexity})"
+                )
+
+                start = perf_counter()
+                prediction, tokens = condition_instance.extract_data(doc)
+                duration = perf_counter() - start
+
+                evaluator.evaluate(
+                    condition_id=condition_id,
+                    complexity_level=doc.complexity,
+                    doc_id=doc.id,
+                    predicted_data=prediction,
+                    metadata={"tokens": tokens, "duration": duration},
+                )
+
         evaluator.save_to_csv(args.config, args.complexity)
+
     except Exception as e:
         logging.error(f"Experiment execution failed: {e}")
         raise e
 
 
 if __name__ == "__main__":
-    main()
+    run_experiment()

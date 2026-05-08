@@ -1,26 +1,46 @@
+import json
+from typing import Tuple, Dict
+from langchain_google_vertexai import ChatVertexAI
 from langchain.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
+from src.architectures.base import BaseCondition
+from src.data_loader import Document
 
 
-def run_condition_c2():
-    print("Running C2 single prompt LLM")
-    # Placeholder for the actual implementation of the single prompt experiment
+class SinglePromptCondition(BaseCondition):
 
+    def __init__(self, llm):
+        self.llm = llm
+        self.prompt = PromptTemplate.from_template(
+            "Du bist ein Experte für die Extraktion von Informationen aus Geschäftsdokumenten.\n"
+            "Extrahiere die gewünschten Felder aus dem folgenden Text. \n"
+            "Antworte AUSSCHLIESSLICH im validen JSON-Format. Erfinde keine Daten.\n\n"
+            "Dokumententext:\n{document_content}\n\n"
+            "Zielschema (Felder):\n{format_instructions}"
+        )
 
-# Definition der Zielannotationen
-class ExtractionResult(BaseModel):
-    registration_num: str = Field(description="Die Registrierungsnummer des Dokuments")
-    date: str = Field(description="Das Ausstellungsdatum im Format YYYY-MM-DD")
+    def extract_data(self, document: Document) -> Tuple[Dict, int]:
+        format_instructions = "\n".join(
+            [f"- {field}" for field in document.target_fields]
+        )
 
+        chain = self.prompt | self.llm
 
-# Der Prompt
-prompt_template = """
-Du bist ein Experte für die Extraktion von Informationen aus Geschäftsdokumenten.
-Extrahiere die gewünschten Felder aus dem folgenden Text. 
-Antworte AUSSCHLIESSLICH im JSON-Format. Erfinde keine Daten.
+        response = chain.invoke(
+            {
+                "document_content": document.content,
+                "format_instructions": format_instructions,
+            }
+        )
 
-Dokumententext:
-{document_content}
+        # TODO: LangChain Token-Tracking Callback hier integrieren
+        used_tokens = 0
 
-{format_instructions}
-"""
+        try:
+            clean_text = (
+                response.content.replace("```json", "").replace("```", "").strip()
+            )
+            extracted_data = json.loads(clean_text)
+        except json.JSONDecodeError:
+            extracted_data = {}
+
+        return extracted_data, used_tokens

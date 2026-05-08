@@ -14,6 +14,7 @@ class Document:
     complexity: str
     content: str  # Raw OCR-Text or structured Data
     metadata: dict  # defines type, source, etc.
+    target_fields: List[str]  # List of fields to be extracted
 
 
 class DataLoader:
@@ -47,6 +48,7 @@ class DataLoader:
                     complexity=item["complexity"],
                     content=item["content"],
                     metadata=item.get("metadata", {}),
+                    target_fields=item.get("target_fields", []),
                 )
                 documents.append(doc)
 

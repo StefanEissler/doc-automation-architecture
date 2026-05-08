@@ -1,7 +1,7 @@
 # KI-basierte Dokumenten-Automation im Unternehmenskontext
 ## Ein kontrollierter Architekturvergleich zu Extraktionsgenauigkeit und Betriebskosten
 
-**Masterarbeit** · Universität Hohenheim · Institut für Wirtschaftsinformatik (580A)  
+**Masterarbeit** · Universität Hohenheim · Institut für Wirtschaftsinformatik (580A)
 **Autor:** Stefan Eißler
 **Daten:** April–September 2026
 
@@ -17,72 +17,65 @@ Diese Arbeit untersucht empirisch, ob und unter welchen Bedingungen Multi-Agente
 
 ## Experimentelles Design
 
-Das Experiment folgt einem kontrollierten Between-Conditions Benchmark-Design mit vier aktiven Systemkonfigurationen und einer manuellen Basisbedingung:
+Das Experiment folgt einem kontrollierten Between-Conditions Benchmark-Design mit vier Systemkonfigurationen:
 
-| Bedingung | Bezeichnung | Beschreibung |
+| Bedingung | Bezeichnung | Implementierung |
 |---|---|---|
-| C1 | Ground Truth; Regelbasiert | Template-Matching + Regex-Skripte |
-| C2 | Single-Prompt LLM | Einmaliger strukturierter LLM-Call, kein Tool-Use |
-| C3 | Single ReAct Agent | Iteratives Reasoning mit Tool-Use (Yao et al., 2023) |
-| C4 | Multi-Agenten-System | Classifier → Extractor → Validator mit Self-Correction-Loop |
+| C1 | Regelbasiert | Regex-Pattern-Matching pro Zielfeld (`RuleBasedCondition`) |
+| C2 | Single-Prompt LLM | Einmaliger strukturierter LLM-Call ohne Tool-Use (`SinglePromptCondition`) |
+| C3 | Single ReAct Agent | Iteratives Reasoning mit Tool-Use via `langchain.agents.create_agent` (`SingleAgentCondition`) (vgl. Yao et al., 2023) |
+| C4 | Multi-Agenten-System | Scanner → Extractor → Validator-Pipeline mit Self-Correction-Loop via LangGraph (`MultiAgentCondition`) |
 
-Drei Komplexitätsstufen operationalisieren die Dokumentheterogenität:
+Drei Komplexitätsstufen operationalisieren die Dokumentheterogenität und sind als CLI-Filter (`--complexity`) im Datenlader hinterlegt:
 
 - **L1** – Vollständig strukturierte Dokumente (z.B. standardisierte Auftragsbestätigung)
 - **L2** – Moderat komplexe Dokumente (z.B. mehrseitige Angebote, Mahnungen mit Zahlungshistorie)
 - **L3** – Hochkomplexe Fälle (schlecht gescannte PDFs, gemischtsprachige Dokumente, fehlende Pflichtfelder)
 
-**Abhängige Variablen:** F1-Score je Pflichtfeld · Halluzinationsrate · Token-Cost · Time-to-Completion · Automatisierungsgrad
-
-**Auswertung:** Zweifaktorielle ANOVA (Systemkonfiguration × Komplexitätsstufe) · Tukey-HSD Post-hoc · Regressionsanalyse Break-even
+Pro Dokument und Bedingung werden Vorhersage, Token-Verbrauch und Laufzeit (`perf_counter`-Delta um `extract_data`) erfasst und über den `BenchmarkEvaluator` als CSV nach `results/` geschrieben.
 
 ---
 
 ## Repository-Struktur
 
 ```
-doc-automation-benchmark/
+doc-automation-architecture/
 │
 ├── data/
-│   ├── raw/                    # Rohdaten (RVL-CDIP, HuggingFace-Quellen)
-│   ├── processed/              # Vorverarbeiteter Text nach OCR/Parsing
-│   ├── annotated/              # Ground-Truth-Annotationen (JSON)
-│   └── synthetic/              # Synthetisch generierte Dokumente (L3)
+│   ├── docile/                      # via scripts/download_dataset_docile.sh
+│   ├── vrdu/                        # via scripts/download_dataset_vrdu.sh
+│   └── corpus/
+│       └── corpus.json              # vom DataLoader erwartetes Eingabeformat
 │
 ├── src/
-│   ├── preprocessing/
-│   │   ├── pdf_extractor.py    # pdfplumber, python-docx, email-Parser
-│   │   └── ocr.py              # Tesseract-Wrapper für Scans
+│   ├── main.py                      # CLI-Einstieg, Experiment-Runner
+│   ├── data_loader.py               # Document-Dataclass + Korpus-Loader
+│   ├── evaluation.py                # BenchmarkEvaluator, CSV-Export
+│   ├── constants.py                 # PROJECT_ROOT
 │   │
-│   ├── systems/
-│   │   ├── c1_regex.py         # Regelbasiertes System (C1)
-│   │   ├── c2_single_prompt.py # Single-Prompt LLM (C2)
-│   │   ├── c3_react_agent.py   # ReAct Single Agent via LangGraph (C3)
-│   │   └── c4_multi_agent.py   # Multi-Agenten-Pipeline (C4)
+│   ├── architectures/
+│   │   ├── base.py                  # BaseCondition (ABC)
+│   │   ├── c1_rule_based.py         # C1: Regex-Extraktion
+│   │   ├── c2_singe_prompt.py       # C2: Single-Prompt LLM
+│   │   ├── c3_ai_agent.py           # C3: ReAct-Agent mit Suchwerkzeug
+│   │   └── c4_multi_ai_agents.py    # C4: LangGraph Multi-Agenten-Workflow
 │   │
-│   ├── evaluation/
-│   │   ├── metrics.py          # F1, Halluzinationsrate, Token-Cost, Time
-│   │   ├── runner.py           # Automatisierter Durchlauf aller Systeme
-│   │   └── ground_truth.py     # Ground-Truth-Loader und Feldvergleich
-│   │
-│   └── data_generation/
-│       └── synthetic_docs.py   # reportlab + faker für L3-Dokumente
+│   └── preprocessing/
+│       └── pdf_extractor.py         # (Platzhalter)
 │
 ├── notebooks/
-│   ├── 01_data_exploration.ipynb   # Datensatz-Analyse und Verteilung
-│   ├── 02_pilot_test.ipynb         # Pilottest mit 20 Dokumenten
-│   └── 03_results_analysis.ipynb   # ANOVA, Visualisierungen, Break-even
+│   └── data_exploration.ipynb       # Datensatz-Analyse
 │
-├── results/
-│   ├── raw_outputs/            # JSON-Outputs jedes Systems je Dokument
-│   └── statistics/             # Auswertungsergebnisse, Plots
+├── scripts/
+│   ├── download_dataset_docile.sh   # DocILE-Download (Token-pflichtig)
+│   ├── download_dataset_vrdu.sh     # VRDU-Sparse-Checkout via git
+│   └── zip-data.sh                  # Backup ohne Roh-Datasets
 │
+├── results/                         # CSV-Ausgaben des BenchmarkEvaluators
 ├── tests/
-│   └── test_metrics.py         # Unit-Tests für Evaluationsmetriken
-│
-├── pyproject.toml              # uv Projektkonfiguration + Abhängigkeiten
-├── .env.example                # API-Key-Template (nie .env committen)
-├── .gitignore
+├── main.py                          # Wrapper auf src.main
+├── pyproject.toml                   # uv-Projektkonfiguration
+├── .env.example
 └── README.md
 ```
 
@@ -92,129 +85,103 @@ doc-automation-benchmark/
 
 ### Voraussetzungen
 
-- Python ≥ 3.11
-- [uv](https://docs.astral.sh/uv/) (empfohlen) oder pip
-- Tesseract OCR (`brew install tesseract` / `apt install tesseract-ocr`)
-- Anthropic API Key
+- Python ≥ 3.13
+- [uv](https://docs.astral.sh/uv/)
+- Lokale Ollama-Installation mit `llama3`-Modell (Default-Provider)
 
-### Setup mit uv (empfohlen)
+### Setup
 
 ```bash
 # uv installieren (einmalig)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Repository klonen und Abhängigkeiten installieren
-git clone https://github.com/<username>/doc-automation-benchmark.git
-cd doc-automation-benchmark
+git clone https://github.com/<username>/doc-automation-architecture.git
+cd doc-automation-architecture
 uv sync
 
 # Umgebungsvariablen konfigurieren
 cp .env.example .env
-# ANTHROPIC_API_KEY=sk-... in .env eintragen
 ```
 
-### Setup mit venv (alternativ)
+Kerndependencies (siehe `pyproject.toml`): `langchain`, `langgraph`, `langchain-anthropic`, `pdfplumber`, `python-docx`, `pytesseract`, `spacy` (`en_core_web_lg`), `pandas`, `scipy`, `scikit-learn`, `seaborn`, `matplotlib`, `reportlab`, `faker`, `jupyter`.
+
+---
+
+## Datensätze
+
+### DocILE Benchmark Dataset
+
+Token muss über das offizielle Formular angefordert werden: https://docs.google.com/forms/u/0/d/e/1FAIpQLSeYaPkF_BOeD2GwBGueVbprESD7Mys-hMAiUj8oVKBmBGnJUw
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
+chmod +x ./scripts/download_dataset_docile.sh
+./scripts/download_dataset_docile.sh TOKEN annotated-trainval data/docile --unzip
 ```
 
-## Daten Initalisierung
-
-### Download des DocILE Benchmark Dataset
-
-Token muss über: https://docs.google.com/forms/u/0/d/e/1FAIpQLSeYaPkF_BOeD2GwBGueVbprESD7Mys-hMAiUj8oVKBmBGnJUw angefordert werden.
+### VRDU Dataset
 
 ```bash
-sudo chmod +x ./scripts/download_dataset.sh
-./scripts/download_dataset.sh TOKEN annotated-trainval data/docile --unzip
+chmod +x ./scripts/download_dataset_vrdu.sh
+./scripts/download_dataset_vrdu.sh
 ```
 
-### Kerndependencies
+Klont per Sparse-Checkout `registration-form/` und `ad-buy-form/` aus `google-research-datasets/vrdu` nach `data/vrdu/` und entpackt die `dataset.jsonl.gz`-Dateien.
 
-```toml
-# pyproject.toml (Auszug)
-[project]
-name = "doc-automation-benchmark"
-requires-python = ">=3.11"
+### Backup ohne Roh-Datasets
 
-dependencies = [
-    "langchain>=0.3",
-    "langgraph>=0.2",
-    "langchain-anthropic>=0.3",
-    "pdfplumber>=0.11",
-    "python-docx>=1.1",
-    "pytesseract>=0.3",
-    "pillow>=10.0",
-    "pandas>=2.0",
-    "scipy>=1.12",
-    "pingouin>=0.5",          # ANOVA und Post-hoc
-    "scikit-learn>=1.4",
-    "reportlab>=4.0",         # Synthetische PDF-Generierung
-    "faker>=24.0",
-    "mlflow>=2.0",            # Experiment-Tracking
-    "python-dotenv>=1.0",
-    "jupyter>=1.0",
-]
+```bash
+./scripts/zip-data.sh
 ```
+
+Erzeugt `data_backup_x_origin.zip` mit allen `data/`-Inhalten **außer** `data/docile/*` und `data/vrdu/*`.
 
 ---
 
 ## Experiment ausführen
 
 ```bash
-# Pilottest mit 20 Dokumenten (alle Systeme)
-uv run python src/evaluation/runner.py --pilot
-
-# Hauptexperiment (alle 200 Dokumente)
-uv run python src/evaluation/runner.py --full
-
-# Einzelnes System testen
-uv run python src/evaluation/runner.py --system c4 --docs data/processed/
-
-# Ergebnisse auswerten
-uv run jupyter notebook notebooks/03_results_analysis.ipynb
+uv run python -m src.main [OPTIONS]
 ```
 
----
+### CLI-Argumente
 
-## Ground-Truth-Format
+| Flag | Werte | Default | Beschreibung |
+|---|---|---|---|
+| `--config` | `all`, `c1`, `c2`, `c3`, `c4` | `all` | Wählt eine einzelne Bedingung oder den vollständigen Architekturvergleich. |
+| `--complexity` | `all`, `L1`, `L2`, `L3` | `all` | Filtert das Korpus auf eine Komplexitätsstufe. |
+| `--limit` | `int` | `None` | Begrenzt die Zahl geladener Dokumente (z.B. für Pilot-Läufe). |
+| `--provider` | `vertex`, `ollama` | `ollama` | LLM-Backend. Aktuell ist nur `ollama` (Modell `llama3`, `temperature=0.2`) aktiv verdrahtet. |
 
-Jedes Dokument wird als JSON annotiert:
+### Beispielaufrufe
 
-```json
-{
-  "doc_id": "inv_042",
-  "doc_type": "invoice",
-  "complexity": "L2",
-  "source": "rvl_cdip",
-  "annotator_1": "se",
-  "annotator_2": "xx",
-  "fields": {
-    "amount":    "1.234,56",
-    "tax":       "19%",
-    "date":      "2024-01-15",
-    "supplier":  "Mustermann GmbH",
-    "account":   null
-  }
-}
+```bash
+# Vollständiger Lauf: alle 4 Bedingungen über alle Komplexitätsstufen
+uv run python -m src.main
+
+# Pilot-Lauf: nur C2 auf 10 L1-Dokumenten
+uv run python -m src.main --config c2 --complexity L1 --limit 10
+
+# Multi-Agenten-System auf hochkomplexen Dokumenten
+uv run python -m src.main --config c4 --complexity L3
 ```
 
-`null` bedeutet: Feld im Dokument nicht vorhanden (relevant für Halluzinationsmessung bei L3).
+### Ergebnisausgabe
+
+Pro Lauf schreibt `BenchmarkEvaluator.save_to_csv` eine Datei `results/evaluation_<timestamp>_<config>_<complexity>.csv` mit den Spalten `condition, complexity, doc_id, f1_score, is_hallucination, token_cost, duration`.
 
 ---
 
 ## Quellen
+
 Šimsa, Š., Šulc, M., Uřičář, M., Patel, Y., Hamdi, A., Kocián, M., Skalický, M., Matas, J., Doucet, A., Coustaty, M., & Karatzas, D. (2023, February 11). DocILE Benchmark for Document Information Localization and Extraction. arXiv.Org. https://arxiv.org/abs/2302.05658v2
+
 Wang, Z., Zhou, Y., Wei, W., Lee, C.-Y., & Tata, S. (2023). VRDU: A Benchmark for Visually-rich Document Understanding. Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, 5184–5193. https://doi.org/10.1145/3580305.3599929
 
+Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., & Cao, Y. (2022). ReAct: Synergizing Reasoning and Acting in Language Models (Version 3). arXiv. https://doi.org/10.48550/ARXIV.2210.03629
 
 ---
 
-> Dieses Repository enthält keine echten Unternehmensdaten.  
-> Alle verwendeten Dokumente sind entweder öffentliche Datensätze (VRDU, DocILE papers)  
-> oder synthetisch generiert. API-Keys werden ausschließlich lokal via `.env` verwaltet  
-> und sind nicht Teil des Repositories.
+> Dieses Repository enthält keine echten Unternehmensdaten.
+> Alle verwendeten Dokumente stammen aus öffentlichen Datensätzen (DocILE, VRDU).
+> API-Keys werden ausschließlich lokal via `.env` verwaltet und sind nicht Teil des Repositories.

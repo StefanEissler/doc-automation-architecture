@@ -5,6 +5,7 @@ from typing import Dict, Tuple
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.prompts import PromptTemplate
 
 from src.architectures.base import BaseCondition
 from src.data_loader import Document
@@ -30,11 +31,17 @@ class SingleAgentCondition(BaseCondition):
     def __init__(self, llm: BaseChatModel):
         self.llm = llm
         self.tools = [search_in_document]
-        system_prompt = (
-            "Du bist ein intelligenter Datenextraktions-Agent für Geschäftsdokumente.\n"
-            "Nutze deine Werkzeuge, um das Dokument schrittweise zu analysieren.\n"
-            "Wenn du alle nötigen Informationen gesammelt hast, antworte AUSSCHLIESSLICH "
-            "mit einem validen JSON-Objekt. Die Keys müssen exakt den geforderten Feldern entsprechen."
+        system_prompt = PromptTemplate(
+            template=(
+                "Du bist ein Datenextraktions-Experte für Geschäftsdokumente.\n"
+                "Extrahiere die gewünschten Felder aus dem Dokumententext.\n\n"
+                "{format_instructions}\n\n"
+                "Dokumententext:\n{document_content}\n"
+            ),
+            input_variables=["document_content"],
+            partial_variables={
+                "format_instructions": self.parser.get_format_instructions()
+            },
         )
         self.agent = create_agent(
             model=self.llm, tools=self.tools, system_prompt=system_prompt

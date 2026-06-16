@@ -1,65 +1,71 @@
-# src/data_loader.py
 import json
-import logging
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 @dataclass
 class Document:
-    """Represents a single Document of the experiment."""
-
     id: str
     complexity: str
-    content: str  # Raw OCR-Text or structured Data
-    metadata: dict  # defines type, source, etc.
-    target_fields: List[str]  # List of fields to be extracted
+    content: str
+    target_fields: List[str]
+    ground_truth: Dict
+    pdf_path: Optional[Path] = None
 
 
 class DataLoader:
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, experiment: str = "A"):
         self.data_dir = Path(data_dir)
-        if not self.data_dir.exists():
-            logging.error(f"Data directory not found: {self.data_dir}")
-            raise FileNotFoundError(f"Directory {self.data_dir} does not exist.")
+        self.experiment = experiment
+
+        # Leite den Dateinamen aus dem Experiment-Parameter ab
+        self.corpus_file = (
+            self.data_dir / f"corpus_experiment_{self.experiment}_internal.json"
+        )
+
+        if not self.corpus_file.exists():
+            raise FileNotFoundError(
+                f"Corpus-Datei fehlt: {self.corpus_file}. Bitte Pfad prüfen!"
+            )
 
     def load_docs(
         self, complexity: str = "all", limit: Optional[int] = None
     ) -> List[Document]:
-        """
-        Loads data of used complexity.
-        """
+        with open(self.corpus_file, "r", encoding="utf-8") as f:
+            raw_data = json.load(f)
+
         documents = []
+        for item in raw_data:
+            doc_complexity = item.get("complexity", "L1")
 
-        corpus_file = self.data_dir / "corpus.json"
+            if complexity != "all" and doc_complexity != complexity:
+                continue
 
-        try:
-            with open(corpus_file, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
+            ground_truth = item.get("ground_truth", {})
+            target_fields = list(ground_truth.keys())
 
-            for item in raw_data:
-                # Filter for complexity level if specified
-                if complexity != "all" and item.get("complexity") != complexity:
-                    continue
+            # Pfad zur PDF-Datei konstruieren (falls später benötigt)
+            doc_id = item.get("doc_id")
+            pdf_path = (
+                self.data_dir
+                / "pdfs"
+                / f"experiment_{self.experiment}"
+                / doc_complexity.lower()
+                / doc_id
+            )
 
-                doc = Document(
-                    id=item["id"],
-                    complexity=item["complexity"],
-                    content=item["content"],
-                    metadata=item.get("metadata", {}),
-                    target_fields=item.get("target_fields", []),
-                )
-                documents.append(doc)
+            doc = Document(
+                id=doc_id,
+                complexity=doc_complexity,
+                content=item.get("ocr_text", ""),
+                target_fields=target_fields,
+                ground_truth=ground_truth,
+                pdf_path=pdf_path if pdf_path.exists() else None,
+            )
+            documents.append(doc)
 
-                if limit and len(documents) >= limit:
-                    break
+            if limit and len(documents) >= limit:
+                break
 
-        except Exception as e:
-            logging.error(f"Failed to load documents: {e}")
-            raise e
-
-        logging.info(
-            f"Loaded {len(documents)} documents for complexity '{complexity}'."
-        )
         return documents

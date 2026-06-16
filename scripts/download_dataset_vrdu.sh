@@ -2,7 +2,7 @@
 
 echo "Klone VRDU Dataset..."
 
-TARGET_DIR="data/vrdu"
+TARGET_DIR="data/raw/vrdu"
 REPO_URL="https://github.com/google-research-datasets/vrdu.git"
 
 if [ ! -d "$TARGET_DIR" ]; then

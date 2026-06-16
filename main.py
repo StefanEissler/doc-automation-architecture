@@ -1,4 +1,4 @@
-from src.main import main
+from src.main import run_experiment
 
 if __name__ == "__main__":
-    main()
+    run_experiment()

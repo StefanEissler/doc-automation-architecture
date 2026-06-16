@@ -96,7 +96,7 @@ doc-automation-architecture/
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Repository klonen und Abhängigkeiten installieren
-git clone https://github.com/<username>/doc-automation-architecture.git
+git clone https://github.com/StefanEissler/doc-automation-architecture.git
 cd doc-automation-architecture
 uv sync
 
@@ -136,6 +136,24 @@ Klont per Sparse-Checkout `registration-form/` und `ad-buy-form/` aus `google-re
 
 Erzeugt `data_backup_x_origin.zip` mit allen `data/`-Inhalten **außer** `data/docile/*` und `data/vrdu/*`.
 
+### Installation des Ollama Modells
+
+Umfassende Dokumentation
+https://docs.langchain.com/oss/python/integrations/llms/ollama
+
+Installation: 
+
+Mac:
+```bash
+brew install ollama
+```
+
+Linux:
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+
 ---
 
 ## Experiment ausführen
@@ -148,22 +166,27 @@ uv run python -m src.main [OPTIONS]
 
 | Flag | Werte | Default | Beschreibung |
 |---|---|---|---|
-| `--config` | `all`, `c1`, `c2`, `c3`, `c4` | `all` | Wählt eine einzelne Bedingung oder den vollständigen Architekturvergleich. |
+| `--condition` | `all`, `c1`, `c2`, `c3`, `c4` | `all` | Wählt eine einzelne Bedingung oder den vollständigen Architekturvergleich. |
 | `--complexity` | `all`, `L1`, `L2`, `L3` | `all` | Filtert das Korpus auf eine Komplexitätsstufe. |
 | `--limit` | `int` | `None` | Begrenzt die Zahl geladener Dokumente (z.B. für Pilot-Läufe). |
-| `--provider` | `vertex`, `ollama` | `ollama` | LLM-Backend. Aktuell ist nur `ollama` (Modell `llama3`, `temperature=0.2`) aktiv verdrahtet. |
+| `--provider` | `openai`, `ollama` | `ollama` | LLM-Backend. Beide Provider sind vollständig via LangChain integriert (Standard: `temperature=0.0`). |
+| `--model` | `str` | `llama3` | Spezifischer Modellname für den gewählten Provider (z.B. `llama3`, `gpt-4o-mini`, `gpt-4o`). |
+
 
 ### Beispielaufrufe
 
 ```bash
 # Vollständiger Lauf: alle 4 Bedingungen über alle Komplexitätsstufen
-uv run python -m src.main
+uv run python -m main
+
+# Test einer Bedingung:
+uv run python -m main --condition c2 --experiment A --limit 1 --model llama3.1:8b
 
 # Pilot-Lauf: nur C2 auf 10 L1-Dokumenten
-uv run python -m src.main --config c2 --complexity L1 --limit 10
+uv run python -m main --config c2 --complexity L1 --limit 10
 
 # Multi-Agenten-System auf hochkomplexen Dokumenten
-uv run python -m src.main --config c4 --complexity L3
+uv run python -m main --config c4 --complexity L3
 ```
 
 ### Ergebnisausgabe

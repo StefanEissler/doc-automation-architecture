@@ -10,6 +10,14 @@ class RuleBasedCondition(BaseCondition):
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.patterns = {
+            "gross_amount": r"(?:Gross Amount|Total|Amount Due|Net)[\s:$\w]*?([\d\.,]+)",
+            "contract_num": r"(?:Contract|Order|PO|Contract Num)[\s:#]*([A-Za-z0-9\-]+)",
+            "flight_from": r"(?:Flight From|Start Date)[\s:]*([\d]{1,2}[/\.-][\d]{1,2}[/\.-][\d]{2,4})",
+            "flight_to": r"(?:Flight To|End Date)[\s:]*([\d]{1,2}[/\.-][\d]{1,2}[/\.-][\d]{2,4})",
+            "advertiser": r"(?:Advertiser|Client|Bill To)[\s:]+([^\n]+)",
+            # Weitere Felder hier ergänzen...
+        }
 
     def extract_data(self, document: Document) -> Tuple[Dict, int]:
         try:
@@ -49,6 +57,18 @@ class RuleBasedCondition(BaseCondition):
                 else:
                     extracted_data[field] = ""
 
-            return extracted_data, 0
+            self.logger.info(f"Finished C1 for: ${document.id}")
+            return extracted_data, {
+                "input_tokens": None,
+                "output_tokens": None,
+                "tokens": None,
+                "duration": None,
+            }
         except Exception as e:
             self.logger.exception(e)
+            return {}, {
+                "input_tokens": None,
+                "output_tokens": None,
+                "tokens": None,
+                "duration": None,
+            }

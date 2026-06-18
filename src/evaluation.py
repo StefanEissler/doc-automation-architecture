@@ -1,4 +1,3 @@
-from curses import meta
 import datetime as dt
 import logging
 import csv
@@ -50,6 +49,8 @@ def price_match_cleaner(value: Any) -> float:
     if not value:
         return None
     cleaned = re.sub(r"[^\d,\.-]", "", str(value))
+    cleaned = cleaned.replace(",", "")
+    cleaned = cleaned.replace(".", "")
     return float(cleaned) if cleaned else None
 
 
@@ -92,9 +93,13 @@ class BenchmarkEvaluator:
         ground_truth_data,
         metadata,
         duration=None,
+        model=None,
     ):
         if not isinstance(predicted_data, dict):
             predicted_data = {}
+
+        if metadata is None:
+            metadata = {}
 
         tp, fp, fn = 0, 0, 0
         is_hallucination = False
@@ -109,8 +114,10 @@ class BenchmarkEvaluator:
             gt_val = ground_truth_data.get(field)
             pred_val = predicted_data.get(field)
 
-            for _ in predicted_data.keys() - ground_truth_data.keys():
-                is_hallucination = True
+            # Hallizination ist der Anteil der Outputs, in denen min. ein Plfichtfeld faktisch falsch ist.
+            # Halluzinierte Keys gehören eigentlich nicht dazu.
+            # for _ in predicted_data.keys() - ground_truth_data.keys():
+            #     is_hallucination = True
 
             result = self.evaluate_field(field, gt_val, pred_val)
 
@@ -133,6 +140,14 @@ class BenchmarkEvaluator:
             else 0.0
         )
 
+        if duration is not None:
+            duration_seconds = round(duration, 3)
+        else:
+            meta_duration = metadata.get("duration")
+            duration_seconds = (
+                round(meta_duration, 3) if meta_duration is not None else None
+            )
+
         result_entry = {
             "condition": condition_id,
             "complexity": complexity_level,
@@ -141,16 +156,11 @@ class BenchmarkEvaluator:
             "precision": precision,
             "recall": recall,
             "is_hallucination": is_hallucination,
-            "input_tokens": metadata.get("input_tokens", 0),
-            "output_tokens": metadata.get("output_tokens", 0),
-            "all_tokens": metadata.get("tokens", 0),
-            "duration_seconds": (
-                (
-                    round(metadata.get("duration", 0.0), 3)
-                    if duration is not None
-                    else metadata.get("duration", 0.0)
-                ),
-            ),
+            "input_tokens": metadata.get("input_tokens"),
+            "output_tokens": metadata.get("output_tokens"),
+            "all_tokens": metadata.get("tokens"),
+            "duration_seconds": duration_seconds,
+            "model": model,
         }
         self.results.append(result_entry)
 
@@ -184,7 +194,7 @@ class BenchmarkEvaluator:
         if not gt_norm and not pred_norm:
             return "TN"
         if not gt_norm and pred_norm:
-            return "FP_HALLUCInATION"
+            return "FP_HALLUCINATION"
         if gt_norm and not pred_norm:
             return "FN"
 
@@ -202,7 +212,10 @@ class BenchmarkEvaluator:
             return
 
         now = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = self.results_dir / f"evaluation_{now}_{condition}_{complexity}.csv"
+        filename = (
+            self.results_dir
+            / f"experiment_benchmark_{condition}_{complexity}_{now}.csv"
+        )
 
         keys = self.results[0].keys()
 

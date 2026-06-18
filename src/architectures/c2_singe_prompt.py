@@ -35,17 +35,15 @@ class SinglePromptCondition(BaseCondition):
         prompts = [system_msg, human_msg]
         response = self.llm.invoke(prompts)
 
-        print(prompts)
-
-        print(response)
-
         input_tokens = 0
         output_tokens = 0
         if response.usage_metadata or response.response_metadata:
             input_tokens = response.usage_metadata.get("input_tokens", 0)
             output_tokens = response.usage_metadata.get("output_tokens", 0)
             all_tokens = response.usage_metadata.get("total_tokens", 0)
-            duration = response.response_metadata.get("total_duration", 0)
+            duration = (
+                response.response_metadata.get("total_duration", 0) / 1e9
+            )  # Umwandlung in Sekunden
 
         metadata = {
             "input_tokens": input_tokens,

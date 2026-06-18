@@ -3,9 +3,8 @@ import argparse
 import logging
 import subprocess
 from time import perf_counter
-from typing import Any
 
-from langchain_ollama import ChatOllama, OllamaLLM
+from langchain_ollama import ChatOllama
 
 from src.architectures.c1_rule_based import RuleBasedCondition
 from src.architectures.c2_singe_prompt import SinglePromptCondition
@@ -68,7 +67,8 @@ def run_experiment():
         parser.add_argument(
             "--condition",
             type=str,
-            choices=["all", "c1", "c2", "c3", "c4"],
+            nargs="+",
+            choices=["all", "C1", "C2", "C3", "C4"],
             default="all",
             help="Which condition(s) to run",
         )
@@ -82,6 +82,7 @@ def run_experiment():
         parser.add_argument(
             "--complexity",
             type=str,
+            nargs="+",
             choices=["all", "L1", "L2", "L3"],
             default="all",
             help="Complexity level of documents to test on",
@@ -95,6 +96,7 @@ def run_experiment():
         parser.add_argument(
             "--provider",
             type=str,
+            nargs="+",
             choices=["vertex", "ollama"],
             default="ollama",
             help="LLM provider to use for conditions C2-C4",
@@ -112,35 +114,41 @@ def run_experiment():
         data_dir_path = str(PROJECT_ROOT / "data" / "processed")
         loader = DataLoader(data_dir=data_dir_path, experiment=args.experiment)
 
-        llm_params = {
+        base_llm_params = {
             "model": args.model,
             "temperature": 0.0,
-            "format": "json",
             "seed": 48,
             "top_k": 5,
             "top_p": 0.1,
         }
-        llm = get_llm(args.provider, args.model, llm_params)
+        llm_text = get_llm(args.provider, args.model, base_llm_params)
+
+        json_llm_params = base_llm_params.copy()
+        json_llm_params["format"] = "json"
+        llm_json = get_llm(args.provider, args.model, json_llm_params)
 
         documents = loader.load_docs(complexity=args.complexity, limit=args.limit)
 
         available_conditions = {
-            "c1": RuleBasedCondition(),
-            "c2": SinglePromptCondition(llm=llm),
-            # "c3": SingleAgentCondition(llm=llm),
-            # "c4": MultiAgentCondition(llm=llm),
+            "C1": RuleBasedCondition(),
+            "C2": SinglePromptCondition(llm=llm_json),
+            "C3": SingleAgentCondition(llm=llm_text),
+            "C4": MultiAgentCondition(llm=llm_text),
         }
 
-        conditions_to_run = (
-            available_conditions
-            if args.condition == "all"
-            else {args.condition: available_conditions[args.condition]}
-        )
+        if "all" in args.condition:
+            conditions_to_run = available_conditions
+        else:
+            conditions_to_run = {
+                key: available_conditions[key]
+                for key in args.condition
+                if key in available_conditions
+            }
 
-        for doc in documents:
+        for idx, doc in enumerate(documents):
             for condition_id, condition_instance in conditions_to_run.items():
                 logging.info(
-                    f"Running {condition_id} on Document {doc.id} (Complexity: {doc.complexity})"
+                    f"Running {condition_id} on Document {doc.id} (Complexity: {doc.complexity}) (Doc: {idx}/{len(documents)})"
                 )
 
                 start = perf_counter()
@@ -155,6 +163,7 @@ def run_experiment():
                     ground_truth_data=doc.ground_truth,
                     metadata=meta_data,
                     duration=duration,
+                    model=args.model,
                 )
 
         evaluator.save_to_csv(args.experiment, args.complexity)

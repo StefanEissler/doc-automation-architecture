@@ -24,7 +24,7 @@ Das Experiment folgt einem kontrollierten Between-Conditions Benchmark-Design mi
 | C1 | Regelbasiert | Regex-Pattern-Matching pro Zielfeld (`RuleBasedCondition`) |
 | C2 | Single-Prompt LLM | Einmaliger strukturierter LLM-Call ohne Tool-Use (`SinglePromptCondition`) |
 | C3 | Single ReAct Agent | Iteratives Reasoning mit Tool-Use via `langchain.agents.create_agent` (`SingleAgentCondition`) (vgl. Yao et al., 2023) |
-| C4 | Multi-Agenten-System | Scanner → Extractor → Validator-Pipeline mit Self-Correction-Loop via LangGraph (`MultiAgentCondition`) |
+| C4 | Multi-Agenten-System | Planner → Extractor → Validator-Pipeline mit Self-Correction-Loop via LangGraph (`MultiAgentCondition`) |
 
 Drei Komplexitätsstufen operationalisieren die Dokumentheterogenität und sind als CLI-Filter (`--complexity`) im Datenlader hinterlegt:
 

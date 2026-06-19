@@ -120,6 +120,7 @@ def run_experiment():
             "seed": 48,
             "top_k": 5,
             "top_p": 0.1,
+            "num_ctx": 16384,
         }
         llm_text = get_llm(args.provider, args.model, base_llm_params)
 
@@ -163,7 +164,7 @@ def run_experiment():
                     ground_truth_data=doc.ground_truth,
                     metadata=meta_data,
                     duration=duration,
-                    model=args.model,
+                    model=args.model if condition_id == "C1" "" else args.model,
                 )
 
         evaluator.save_to_csv(args.experiment, args.complexity)

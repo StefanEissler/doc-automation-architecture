@@ -161,7 +161,7 @@ class MultiAgentCondition(BaseCondition):
                 in_tok += chunk.usage_metadata.get("input_tokens", 0)
                 out_tok += chunk.usage_metadata.get("output_tokens", 0)
 
-        final_message = final_state["messages"][-1]  # Das ist ein Message-Objekt
+        final_message = final_state["messages"][-1]
         final_output = final_message.content
 
         try:
@@ -169,7 +169,7 @@ class MultiAgentCondition(BaseCondition):
             json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
             data = json.loads(json_match.group(0)) if json_match else {}
             self.logger.info(data)
-            # BUGFIX für Llama3.1: Entpacken des halluzinierten Tool-Calls
+            # Entpacken bei halluzinierden Tool-Calls
             if (
                 "name" in data
                 and data["name"] == "extract_data"
@@ -184,7 +184,7 @@ class MultiAgentCondition(BaseCondition):
 
         return {
             "raw_extraction": data,
-            "current_output": data,
+            "final_output": data,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
         }

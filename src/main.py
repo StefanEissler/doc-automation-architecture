@@ -4,6 +4,8 @@ import logging
 import subprocess
 from time import perf_counter
 
+import requests
+
 from langchain_ollama import ChatOllama
 
 from src.architectures.c1_rule_based import RuleBasedCondition
@@ -20,30 +22,43 @@ logging.basicConfig(
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def is_ollama_server_running(
+    host: str = "http://localhost:11434", timeout: float = 2.0
+) -> bool:
+    try:
+        resp = requests.get(f"{host}/api/version", timeout=timeout)
+        return resp.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
 def download_ollama_model(model_name: str):
     logging.info(f"Prüfe/Lade Ollama-Modell '{model_name}'...")
     try:
-        # Führt den CLI-Befehl aus. Ist das Modell bereits da, prüft Ollama nur auf Updates.
-        cmd = ["ollama", "pull", model_name]
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        for line in process.stdout:
-            logging.log(msg=line.strip(), level=1)
-
-        process.wait()
-        if process.returncode == 0:
-            logging.info(f"Modell '{model_name}' erfolgreich bereit.")
+        if is_ollama_server_running():
+            resp = requests.post(
+                "http://localhost:11434/api/pull",
+                json={"model": model_name, "stream": False},
+                timeout=None,
+            )
+            resp.raise_for_status()
         else:
-            raise subprocess.CalledProcessError(process.returncode, cmd)
+            cmd = ["ollama", "pull", model_name]
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            for line in process.stdout:
+                logging.info(line.strip())
+            process.wait()
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, cmd)
+        logging.info(f"Modell '{model_name}' erfolgreich bereit.")
     except Exception as e:
-        logging.error(
-            f"Fehler beim Laden des Modells '{model_name}': {e.stderr.decode()}"
-        )
+        logging.error(f"Fehler beim Laden des Modells '{model_name}': {e}")
         raise
 
 

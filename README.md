@@ -42,13 +42,11 @@ Pro Dokument und Bedingung werden Vorhersage, Token-Verbrauch und Laufzeit (`per
 doc-automation-architecture/
 │
 ├── data/
-│   ├── docile/                      # via scripts/download_dataset_docile.sh
-│   ├── vrdu/                        # via scripts/download_dataset_vrdu.sh
-│   └── corpus/
-│       └── corpus.json              # vom DataLoader erwartetes Eingabeformat
+│   ├── raw/                      # via scripts/download_dataset_docile.sh scripts/download_dataset_vrdu.sh
+│   ├── processed/                # processed data
 │
 ├── src/
-│   ├── main.py                      # CLI-Einstieg, Experiment-Runner
+│   ├── main.py                      # main method, Experiment-Runner
 │   ├── data_loader.py               # Document-Dataclass + Korpus-Loader
 │   ├── evaluation.py                # BenchmarkEvaluator, CSV-Export
 │   ├── constants.py                 # PROJECT_ROOT
@@ -59,9 +57,6 @@ doc-automation-architecture/
 │   │   ├── c2_singe_prompt.py       # C2: Single-Prompt LLM
 │   │   ├── c3_ai_agent.py           # C3: ReAct-Agent mit Suchwerkzeug
 │   │   └── c4_multi_ai_agents.py    # C4: LangGraph Multi-Agenten-Workflow
-│   │
-│   └── preprocessing/
-│       └── pdf_extractor.py         # (Platzhalter)
 │
 ├── notebooks/
 │   └── data_exploration.ipynb       # Datensatz-Analyse
@@ -72,7 +67,7 @@ doc-automation-architecture/
 │   └── zip-data.sh                  # Backup ohne Roh-Datasets
 │
 ├── results/                         # CSV-Ausgaben des BenchmarkEvaluators
-├── tests/
+├── tests/                           # Testing scripts
 ├── main.py                          # Wrapper auf src.main
 ├── pyproject.toml                   # uv-Projektkonfiguration
 ├── .env.example

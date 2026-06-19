@@ -9,43 +9,39 @@
 
 echo "Starte Pilot-Experiment auf bwUniCluster 3.0"
 
-# Dateisystem und Workspaces konfigurieren
-# Dokumentierter Workaround für Workspaces.
-# Dies stellt sicher, dass entpackte Container nicht das Home-Quota sprengen.
+# Workspace finden und validieren
 WS_DIR=$(ws_find llm_data)
-export XDG_DATA_HOME=$WS_DIR
-export ENROOT_DATA_PATH=$WS_DIR/enroot
+if [ -z "$WS_DIR" ]; then
+    echo "Kritischer Fehler: Workspace 'llm_data' nicht gefunden!"
+    exit 1
+fi
 
-# Ollama Container vorbereiten
-# Importiert das Image von DockerHub in eine .sqsh-Datei und entpackt es.
+export ENROOT_DATA_PATH="$WS_DIR/enroot_data"
+export ENROOT_CACHE_PATH="$WS_DIR/enroot_cache"
+export OLLAMA_MODELS="$WS_DIR/ollama_models"
+export XDG_DATA_HOME="$WS_DIR"
+
+mkdir -p "$ENROOT_DATA_PATH" "$ENROOT_CACHE_PATH" "$OLLAMA_MODELS"
+
+# Ollama Container importieren
 if [ ! -f "$WS_DIR/ollama.sqsh" ]; then
     echo "Importiere Ollama Container..."
-    cd $WS_DIR
+    cd "$WS_DIR" || exit 1
     enroot import --output ollama.sqsh docker://ollama/ollama
     enroot create --name ollama_container ollama.sqsh
 fi
 
-# Ollama Server im Hintergrund starten
-# Wir starten den Container im Lese-/Schreibmodus (--rw).
-# Durch das Mounten (-m) eines lokalen Verzeichnisses wird sichergestellt,
-# dass die heruntergeladenen Llama-Modelle persistent im Workspace liegen.
-export OLLAMA_MODELS="$WS_DIR/ollama_models"
-mkdir -p $OLLAMA_MODELS
-
+# Ollama Daemon im Hintergrund starten (ohne 'bash -c')
 echo "Starte Ollama Daemon..."
-enroot start -m $OLLAMA_MODELS:/root/.ollama --rw ollama_container bash -c "ollama serve" &
+enroot start -m "$OLLAMA_MODELS:/root/.ollama" --rw ollama_container serve &
 
-sleep 15
+sleep 20
 
-# Llama 3 Modell vorab in den Cache laden, um Timeouts im Python-Code zu verhindern.
-enroot start --rw ollama_container bash -c "ollama pull llama3"
+# Ins Projektverzeichnis wechseln
+cd "$HOME/doc-automation-architecture" || exit 1
 
-# Python Benchmark-Pipeline ausführen
-echo "Aktiviere Python Environment..."
-source $WS_DIR/venv/bin/activate
-
+# Benchmark-Pipeline ausführen
 echo "Starte Benchmark über die Architektur-Bedingungen..."
-# Das Skript greift via localhost:11434 auf den Hintergrund-Container zu.
-python main.py --condition all --complexity all --limit 20 --provider ollama --model llama3
+uv run python main.py --condition all --complexity all --limit 20 --provider ollama --model llama3
 
 echo "Pilot-Experiment erfolgreich beendet."

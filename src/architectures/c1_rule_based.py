@@ -3,7 +3,7 @@ import logging
 from typing import Tuple, Dict, List, Any
 
 # from src.architectures.base import BaseCondition
-from src.data_loader import Document
+# from src.data_loader import Document
 
 
 class RuleBasedCondition:

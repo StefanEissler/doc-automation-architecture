@@ -167,9 +167,24 @@ def run_experiment():
                     f"Running {condition_id} on Document {doc.id} (Complexity: {doc.complexity}) (Doc: {idx}/{len(documents)})"
                 )
 
+                prediction: dict = {}
+                meta_data: dict = {}
+                error_msg = None
+
                 start = perf_counter()
-                prediction, meta_data = condition_instance.extract_data(doc)
-                duration = perf_counter() - start
+                try:
+                    # error_msg ist None bei Erfolg, ein String bei internen
+                    prediction, meta_data, error_msg = condition_instance.extract_data(
+                        doc
+                    )
+                except Exception as e:
+                    # Harter System-Absturz den die Condition nicht intern abgefangen hat.
+                    error_msg = f"{type(e).__name__}: {e}"
+                    logging.error(
+                        f"Hard failure in {condition_id} for doc {doc.id}: {e}"
+                    )
+                finally:
+                    duration = perf_counter() - start
 
                 evaluator.evaluate(
                     condition_id=condition_id,
@@ -177,9 +192,11 @@ def run_experiment():
                     doc_id=doc.id,
                     predicted_data=prediction,
                     ground_truth_data=doc.ground_truth,
+                    doc_text=doc.content,
                     metadata=meta_data,
                     duration=duration,
                     model=args.model if condition_id == "C1" "" else args.model,
+                    error=error_msg,
                 )
 
         evaluator.save_to_csv(args.experiment, args.complexity)

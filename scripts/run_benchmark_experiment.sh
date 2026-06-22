@@ -9,6 +9,16 @@
 
 echo "Starte Pilot-Experiment auf bwUniCluster 3.0"
 
+export PYTHONPATH=""
+export PYTHONNOUSERSITE=1
+source /opt/bwhpc/common/etc/easybuild/enable_eb_modules
+module load Python/3.12.3-GCCcore-13.3.0
+
+echo "Räume alte Prozesse auf..."
+pkill -f "ollama serve" || true
+pkill -f "ollama pull" || true
+sleep 3
+
 # Workspace finden und validieren
 WS_DIR=$(ws_find llm_data)
 if [ -z "$WS_DIR" ]; then
@@ -42,6 +52,6 @@ cd "$HOME/doc-automation-architecture" || exit 1
 
 # Benchmark-Pipeline ausführen
 echo "Starte Benchmark über die Architektur-Bedingungen..."
-uv run python main.py --condition all --complexity all --limit 20 --provider ollama --model llama3
+uv run python -m main --experiment A --model llama3.3
 
 echo "Pilot-Experiment erfolgreich beendet."

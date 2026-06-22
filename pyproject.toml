@@ -38,3 +38,8 @@ en-core-web-lg = { url = "https://github.com/explosion/spacy-models/releases/dow
 pythonpath = [
   "."
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

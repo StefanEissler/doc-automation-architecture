@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from langchain.agents import create_agent
 from langchain.messages import AIMessage, HumanMessage
@@ -43,7 +43,6 @@ def get_document_tools(document_content: str):
         Nimmt einen unsauberen Datums-String aus dem OCR-Text (z.B. '12/24/19' oder 'Dec 24 2019')
         und versucht, ihn in ein sauberes, einheitliches Format zu übersetzen.
         """
-        # Eine simple Python-Implementierung für das Tool (kann erweitert werden)
         # AgenticIE nutzt solche Sanitizer, um die JSON-Qualität zu sichern
         import dateutil.parser
 
@@ -77,7 +76,7 @@ class SingleAgentCondition(BaseCondition):
         #     },
         # )
 
-    def extract_data(self, document: Document) -> Tuple[Dict, Dict]:
+    def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
         doc_tools = get_document_tools(document.content)
         target_fields_str = ", ".join(document.target_fields)
 
@@ -169,7 +168,15 @@ class SingleAgentCondition(BaseCondition):
             }
 
             self.logger.info(f"Finished C3 for: {document.id}")
-            return extracted_data, metadata
+            return extracted_data, metadata, None
         except Exception as e:
-            self.logger.error(f"C3: Fehler bei Dokument {document.id} - {str(e)}")
-            extracted_data = {}
+            self.logger.error(f"C3 Error: {e}")
+            safe_metadata = locals().get(
+                "metadata",
+                {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "tokens": input_tokens + output_tokens,
+                },
+            )
+            return {}, safe_metadata, str(e)

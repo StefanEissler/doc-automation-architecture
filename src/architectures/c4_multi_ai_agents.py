@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Dict, Tuple, List, TypedDict, Any
+from typing import Dict, Optional, Tuple, List, TypedDict, Any
 
 from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END
@@ -255,7 +255,7 @@ class MultiAgentCondition(BaseCondition):
 
         return "end"
 
-    def extract_data(self, document: Document) -> Tuple[Dict, Dict]:
+    def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
         initial_state = {
             "document_content": document.content,
             "target_fields": document.target_fields,
@@ -269,15 +269,30 @@ class MultiAgentCondition(BaseCondition):
         }
 
         self.logger.info(f"C4: Starte Multi-Agenten Pipeline für {document.id}")
-        result_state = self.workflow.invoke(initial_state)
+        try:
+            result_state = self.workflow.invoke(initial_state)
 
-        metadata = {
-            "input_tokens": result_state["input_tokens"],
-            "output_tokens": result_state["output_tokens"],
-            "tokens": result_state["input_tokens"] + result_state["output_tokens"],
-        }
+            metadata = {
+                "input_tokens": result_state["input_tokens"],
+                "output_tokens": result_state["output_tokens"],
+                "tokens": result_state["input_tokens"] + result_state["output_tokens"],
+            }
 
-        if result_state["correction_count"] == 3:
-            return result_state["final_output"], metadata
+            if result_state["correction_count"] == 3:
+                return result_state["final_output"], metadata, None
 
-        return result_state["raw_extraction"], metadata
+            return result_state["raw_extraction"], metadata, None
+
+        except Exception as e:
+            self.logger.error(f"C4 Error: {e}")
+            # Tokens speichern, falls der Absturz im Loop geschah
+            safe_metadata = locals().get(
+                "metadata",
+                {
+                    "input_tokens": initial_state.get("input_tokens", 0),
+                    "output_tokens": initial_state.get("output_tokens", 0),
+                    "tokens": initial_state.get("input_tokens", 0)
+                    + initial_state.get("output_tokens", 0),
+                },
+            )
+            return {}, safe_metadata, str(e)

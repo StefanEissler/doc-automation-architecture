@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Tuple, Dict
+from typing import Optional, Tuple, Dict
 
 from langchain.messages import HumanMessage, SystemMessage
 from src.architectures.base import BaseCondition
@@ -16,7 +16,7 @@ class SinglePromptCondition(BaseCondition):
         self.llm = llm
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def extract_data(self, document: Document) -> Tuple[Dict, int]:
+    def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
 
         format_instructions = "\n".join(
             [f"- {field}" for field in document.target_fields]
@@ -33,10 +33,14 @@ class SinglePromptCondition(BaseCondition):
         human_msg = HumanMessage(content=f"Dokumententext:\n{document.content}")
 
         prompts = [system_msg, human_msg]
+        # Harter LLM-Fehler (Ollama offline, Netzwerk etc.) propagiert bewusst
+        # nach oben zum äußeren try/except in run_experiment.
         response = self.llm.invoke(prompts)
 
         input_tokens = 0
         output_tokens = 0
+        all_tokens = 0
+        duration = 0.0
         if response.usage_metadata or response.response_metadata:
             input_tokens = response.usage_metadata.get("input_tokens", 0)
             output_tokens = response.usage_metadata.get("output_tokens", 0)
@@ -63,6 +67,7 @@ class SinglePromptCondition(BaseCondition):
 
         except (json.JSONDecodeError, ValueError) as je:
             self.logger.exception("JSON Decode Error: %s", je)
-            extracted_data = {}
+            return {}, metadata, f"LLM Formatierung fehlgeschlagen: {je}"
+
         self.logger.info(f"Finished C2 for: ${document.id}")
-        return extracted_data, metadata
+        return extracted_data, metadata, None

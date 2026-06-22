@@ -1,9 +1,6 @@
 import re
 import logging
-from typing import Tuple, Dict, List, Any
-
-# from src.architectures.base import BaseCondition
-# from src.data_loader import Document
+from typing import Optional, Tuple, Dict, List, Any
 
 
 class RuleBasedCondition:
@@ -54,7 +51,7 @@ class RuleBasedCondition:
             )
         return line_items
 
-    def extract_data(self, document: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def extract_data(self, document: Any) -> Tuple[Dict, Dict, Optional[str]]:
         """Hauptmethode für die Bedingung C1."""
         try:
             text = document.content
@@ -63,20 +60,21 @@ class RuleBasedCondition:
 
             self.logger.info(f"Finished C1 for: {getattr(document, 'id', 'unknown')}")
 
-            return extracted_data, {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "tokens": 0,
-                "duration": 0.0,
-            }
+            return (
+                extracted_data,
+                {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "tokens": 0,
+                    "duration": 0.0,
+                },
+                None,
+            )
 
         except Exception as e:
-            self.logger.exception(
-                f"Error processing document {getattr(document, 'id', 'unknown')}: {e}"
+            self.logger.error(f"C1 Error: {e}")
+            return (
+                {},
+                {"input_tokens": 0, "output_tokens": 0, "tokens": 0, "duration": 0.0},
+                str(e),
             )
-            return {}, {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "tokens": 0,
-                "duration": 0.0,
-            }

@@ -149,7 +149,7 @@ def run_experiment():
             "C1": RuleBasedCondition(),
             "C2": SinglePromptCondition(llm=llm_json),
             "C3": SingleAgentCondition(llm=llm_text),
-            "C4": MultiAgentCondition(llm=llm_text),
+            "C4": MultiAgentCondition(llm_text=llm_text, llm_json=llm_json),
         }
 
         if "all" in args.condition:

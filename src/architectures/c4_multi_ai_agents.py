@@ -1,8 +1,8 @@
 import json
 import logging
-import re
 from typing import Dict, Optional, Tuple, List, TypedDict, Any
 
+from pydantic import BaseModel, Field, create_model
 from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -13,16 +13,31 @@ from src.architectures.c3_ai_agent import get_document_tools
 from src.data_loader import Document
 
 
+# Pydantic Schemata für Planner und Validator
+class PlannerOutput(BaseModel):
+    reasoning: str = Field(
+        description="Detaillierte Analyse des Dokuments (Layout, wo stehen Tabellen, wo Metadaten?)"
+    )
+    strategy: str = Field(
+        description="Konkrete, schrittweise Anweisungen an den Extractor (Worauf muss er bei den spezifischen Pflichtfeldern achten?)"
+    )
+
+
+class ValidatorOutput(BaseModel):
+    status: str = Field(description="Muss exakt 'PASSED' oder 'FAILED' sein.")
+    feedback: str = Field(
+        description="Detailliertes Feedback zu Halluzinationen oder fälschlicherweise ausgelassenen Werten."
+    )
+
+
 # State Definition
 class MultiAgentState(TypedDict):
     document_content: str
     target_fields: List[str]
-    planner_reasoning: str  # Chain of Thought des Planners
+    planner_reasoning: str
     planner_strategy: str
     raw_extraction: Dict[str, Any]
-    final_output: Dict[
-        str, Any
-    ]  # greift, wenn maximale loops schon erreicht sind, um das fehlerhafte Ergebnis auszugeben.
+    final_output: Dict[str, Any]
     validation_errors: str
     correction_count: int
     input_tokens: int
@@ -30,10 +45,13 @@ class MultiAgentState(TypedDict):
 
 
 class MultiAgentCondition(BaseCondition):
-    def __init__(self, llm: BaseChatModel):
-        self.llm = llm
+    def __init__(self, llm_text: BaseChatModel, llm_json: BaseChatModel):
+        self.llm_text = llm_text
+        self.llm_json = llm_json
         self.max_retries = 3
         self.logger = logging.getLogger(self.__class__.__name__)
+
+        self._extractor_agent = None
         self.workflow = self._create_workflow()
 
     def _create_workflow(self):
@@ -58,48 +76,48 @@ class MultiAgentCondition(BaseCondition):
 
         return workflow.compile()
 
+    def _build_extractor_agent(self, document_content: str):
+        generic_tools = get_document_tools(document_content)
+        return create_agent(
+            model=self.llm_text,
+            tools=generic_tools,
+        )
+
     def _planner_node(self, state: MultiAgentState) -> Dict:
         self.logger.info("C4: Planung der Extraktion...")
 
         prompt = [
             SystemMessage(
                 content=(
-                    "Du bist der Planner-Agent für Dokumenten-Extraktion. Deine EINZIGE Aufgabe ist es, "
-                    "das Dokument zu analysieren und eine Strategie für den Executor-Agenten zu erstellen.\n"
-                    "FÜHRE KEINE EXTRAKTION DURCH! Nenne keine konkreten Werte aus dem Text!\n"
-                    "Antworte AUSSCHLIESSLICH im folgenden JSON-Format:\n"
-                    "{\n"
-                    '  "reasoning": "Deine Analyse des Layouts (Wo stehen Tabellen? Wo Metadaten?)",\n'
-                    '  "strategy": "Deine konkreten Anweisungen an den Extractor (Worauf muss er achten?)"\n'
-                    "}"
+                    "Du bist der Planner-Agent in einem hochpräzisen Dokumenten-Extraktions-System.\n"
+                    "Deine Aufgabe ist die initiale Dokumentenanalyse. FÜHRE KEINE EXTRAKTION DURCH!\n"
+                    "Analysiere die Struktur und erstelle eine narrensichere Strategie für den Executor-Agenten."
                 )
             ),
             HumanMessage(
-                content=f"Zielfelder, die später extrahiert werden sollen: {state['target_fields']}\n\nDokument:\n{state['document_content']}"
+                content=f"Zielfelder: {state['target_fields']}\n\nDokument:\n<document>\n{state['document_content']}\n</document>"
             ),
         ]
 
-        response = self.llm.invoke(prompt)
+        planner_result = self.llm_json.with_structured_output(PlannerOutput)
 
         try:
-            clean_text = re.sub(r"```json\n|\n```", "", response.content).strip()
-            json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
-            plan_data = json.loads(json_match.group(0)) if json_match else {}
-            reasoning = plan_data.get("reasoning", "Keine Analyse verfügbar.")
-            strategy = plan_data.get("strategy", "Standard-Extraktion anwenden.")
-        except Exception:
-            self.logger.error("C4: Konnte Planner-JSON nicht parsen.")
+            response = planner_result.invoke(prompt)
+            reasoning = response.reasoning
+            strategy = response.strategy
+        except Exception as e:
+            self.logger.error(f"C4: Konnte Planner-JSON nicht parsen. Fehler: {e}")
             reasoning = "Parsing Error."
-            strategy = response.content.strip()
+            strategy = "Standard-Extraktion anwenden."
 
         in_tok = (
             response.usage_metadata.get("input_tokens", 0)
-            if response.usage_metadata
+            if hasattr(response, "usage_metadata") and response.usage_metadata
             else 0
         )
         out_tok = (
             response.usage_metadata.get("output_tokens", 0)
-            if response.usage_metadata
+            if hasattr(response, "usage_metadata") and response.usage_metadata
             else 0
         )
 
@@ -115,42 +133,37 @@ class MultiAgentCondition(BaseCondition):
             f"C4: Extractor arbeitet. Versuch: {state['correction_count'] + 1}"
         )
 
-        doc_tools = get_document_tools(state["document_content"])
         target_str = ", ".join(state["target_fields"])
-
-        feedback_str = ""
-        if state.get("validation_errors"):
-            feedback_str = f"\n<feedback>\nFEHLER-FEEDBACK DES REVIEWERS:\n{state['validation_errors']}\nBEHEBE DIESE FEHLER ZWINGEND IN DIESEM VERSUCH!\n</feedback>"
+        feedback_str = (
+            f"\n<feedback>\nFEHLER-FEEDBACK DES REVIEWERS:\n{state['validation_errors']}\nBEHEBE DIESE FEHLER ZWINGEND IN DIESEM VERSUCH!\n</feedback>"
+            if state.get("validation_errors")
+            else ""
+        )
 
         system_prompt = (
-            "Du bist der Executor-Agent. Gib am Ende AUSSCHLIESSLICH ein JSON-Objekt aus.\n"
-            f"Zwingendes Zielschema (Keys): {target_str}\n\n"
-            "WICHTIGE REGELN:\n"
-            "1. Wenn eine Information im Dokument fehlt, setze den Wert auf null.\n"
-            "2. Erfinde NIEMALS Daten! Nutze das Tool 'verify_exact_match' bei Unsicherheiten.\n"
-            "3. Halte dich exakt an die Anweisung des Planners.\n\n"
-            "Hier ist der Plan des Planners:\n"
+            "Du bist der Executor-Agent für Datenextraktion.\n"
+            f"Zielschema der Felder: {target_str}\n\n"
+            "WICHTIGE REGELN (STRICT COMPLIANCE):\n"
+            "1. Wenn eine Information im Dokument fehlt, setze den Wert auf null. Erfinde NIEMALS Daten!\n"
+            "2. Du darfst ausschließlich Fakten verwenden, die exakt so im Text stehen.\n"
+            "3. Halte dich exakt an die Anweisungen des Planners.\n\n"
+            "Plan des Planners:\n"
             f"<planner_strategy>\n{state.get('planner_strategy', '')}\n</planner_strategy>\n"
             f"{feedback_str}"
         )
 
-        agent = create_agent(
-            model=self.llm, tools=doc_tools, system_prompt=system_prompt
-        )
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=f"Hier ist das Dokument:\n<document>\n{state['document_content']}\n</document>\n\nLies das Dokument, extrahiere die Daten und gib am Ende alle Werte als Text zurück."
+            ),
+        ]
 
-        in_tok = 0
-        out_tok = 0
-
+        in_tok, out_tok = 0, 0
         final_state = {}
-        for chunk in agent.stream(
-            {
-                "messages": [
-                    HumanMessage(
-                        content="Lies das Dokument und extrahiere die Daten. Nutze bei Bedarf Tools."
-                    )
-                ]
-            },
-            stream_mode="values",
+
+        for chunk in self._extractor_agent.stream(
+            {"messages": messages}, stream_mode="values"
         ):
             final_state = chunk
             if (
@@ -161,25 +174,24 @@ class MultiAgentCondition(BaseCondition):
                 in_tok += chunk.usage_metadata.get("input_tokens", 0)
                 out_tok += chunk.usage_metadata.get("output_tokens", 0)
 
-        final_message = final_state["messages"][-1]
-        final_output = final_message.content
+        final_message = final_state["messages"][-1].content
 
         try:
-            clean_text = re.sub(r"```json\n|\n```", "", final_output).strip()
-            json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
-            data = json.loads(json_match.group(0)) if json_match else {}
-            self.logger.info(data)
-            # Entpacken bei halluzinierden Tool-Calls
-            if (
-                "name" in data
-                and data["name"] == "extract_data"
-                and "parameters" in data
-            ):
-                inner_json_str = data["parameters"].get("json_string", "{}")
-                data = json.loads(inner_json_str)
+            field_definitions = {
+                field: (Optional[str], None) for field in state["target_fields"]
+            }
+            ExtractionSchema = create_model("ExtractionSchema", **field_definitions)
+            structured_parser = self.llm_json.with_structured_output(ExtractionSchema)
 
-        except Exception:
-            self.logger.error("C4: Konnte JSON vom LLM nicht parsen.")
+            clean_prompt = f"Wandle diesen unstrukturierten Extraktionstext exakt in das geforderte JSON-Schema um. Ändere keine extrahierten Werte!\n\nText:\n{final_message}"
+            clean_response = structured_parser.invoke(
+                [HumanMessage(content=clean_prompt)]
+            )
+            data = clean_response.dict() if clean_response else {}
+        except Exception as e:
+            self.logger.error(
+                f"C4: Konnte JSON vom LLM nicht strukturieren. Fehler: {e}"
+            )
             data = {}
 
         return {
@@ -193,48 +205,37 @@ class MultiAgentCondition(BaseCondition):
         self.logger.info("C4: Agent 3 (Reviewer) prüft Qualität...")
         data = state.get("raw_extraction", {})
 
-        # Validator überprüft fehlerhafte Einträge.
         prompt = [
             SystemMessage(
                 content=(
-                    "Du bist der Fact-Checking-Agent. "
-                    "Vergleiche das extrahierte JSON mit dem Original-Dokument.\n"
-                    "1. Wurden Fakten halluziniert (z.B. falsche Firmennamen), die NICHT im Text stehen?\n"
-                    "2. Wurden offensichtliche Beträge oder Namen übersehen?\n"
-                    "Antworte AUSSCHLIESSLICH im JSON-Format mit den Keys 'status' und 'feedback'.\n"
-                    'Beispiel FAILED: {"status": "FAILED", "feedback": "Der Advertiser \'ABC\' steht nicht im Text."}\n'
-                    'Beispiel PASSED: {"status": "PASSED", "feedback": "Alles korrekt extrahiert."}'
+                    "Du bist der Fact-Checking-Agent in einem audit-sicheren System.\n"
+                    "Vergleiche das extrahierte JSON kritisch mit dem Original-Dokument.\n"
+                    "1. Wurden Fakten halluziniert, die NICHT im Text stehen?\n"
+                    "2. Wurden vorhandene Pflichtfelder übersehen und fälschlicherweise auf null gesetzt?\n"
+                    "ACHTUNG: Wenn eine Information wirklich nicht im Text steht, ist es KORREKT, wenn sie im JSON null ist. "
+                    "Setze 'status' nur auf 'FAILED', wenn echte Fehler oder Halluzinationen vorliegen. Ansonsten auf 'PASSED'."
                 )
             ),
             HumanMessage(
-                content=f"Dokument:\n{state['document_content']}\n\nExtrahiertes JSON:\n{json.dumps(data, indent=2)}"
+                content=f"Dokument:\n<document>\n{state['document_content']}\n</document>\n\nExtrahiertes JSON:\n{json.dumps(data, indent=2)}"
             ),
         ]
 
-        response = self.llm.invoke(prompt)
+        validator_result = self.llm_json.with_structured_output(ValidatorOutput)
 
         try:
-            clean_text = re.sub(r"```json\n|\n```", "", response.content).strip()
-            json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
-            review_data = json.loads(json_match.group(0)) if json_match else {}
-            status = review_data.get("status", "FAILED")
-            review = review_data.get("feedback", "Konnte Feedback nicht parsen.")
-        except Exception:
+            response = validator_result.invoke(prompt)
+            status = response.status.upper()
+            review = response.feedback
+        except Exception as e:
+            self.logger.error(f"C4: Validator Fehler: {e}")
             status = "FAILED"
-            review = response.content.strip()
+            review = "Kritischer Fehler bei der Validierung."
 
-        # Pyhton warnt, erzwingt aber keinen Fehler, wenn das LLM "PASSED" sagt.
-        python_missing = [
-            f
-            for f in state["target_fields"]
-            if f not in data or data[f] == "" or data[f] is None
-        ]
-
+        # BUGFIX: python_missing ist restlos entfernt. Das LLM entscheidet!
         final_errors = ""
         if status != "PASSED":
-            final_errors += "KI-Kritik (Bitte beheben!): " + review + "\n"
-            if python_missing:
-                final_errors += f"Zusätzlich fehlen diese Keys, prüfe ob sie im Text stehen: {', '.join(python_missing)}"
+            final_errors += f"KI-Kritik (Bitte beheben!): {review}"
 
         return {
             "validation_errors": final_errors.strip(),
@@ -259,7 +260,8 @@ class MultiAgentCondition(BaseCondition):
         initial_state = {
             "document_content": document.content,
             "target_fields": document.target_fields,
-            "planner_plan": "",
+            "planner_reasoning": "",
+            "planner_strategy": "",
             "raw_extraction": {},
             "final_output": {},
             "validation_errors": "",
@@ -270,29 +272,27 @@ class MultiAgentCondition(BaseCondition):
 
         self.logger.info(f"C4: Starte Multi-Agenten Pipeline für {document.id}")
         try:
+            self._extractor_agent = self._build_extractor_agent(document.content)
             result_state = self.workflow.invoke(initial_state)
 
             metadata = {
-                "input_tokens": result_state["input_tokens"],
-                "output_tokens": result_state["output_tokens"],
-                "tokens": result_state["input_tokens"] + result_state["output_tokens"],
+                "input_tokens": result_state.get("input_tokens", 0),
+                "output_tokens": result_state.get("output_tokens", 0),
+                "tokens": result_state.get("input_tokens", 0)
+                + result_state.get("output_tokens", 0),
             }
 
-            if result_state["correction_count"] == 3:
+            if result_state["correction_count"] > self.max_retries:
                 return result_state["final_output"], metadata, None
 
             return result_state["raw_extraction"], metadata, None
 
         except Exception as e:
             self.logger.error(f"C4 Error: {e}")
-            # Tokens speichern, falls der Absturz im Loop geschah
-            safe_metadata = locals().get(
-                "metadata",
-                {
-                    "input_tokens": initial_state.get("input_tokens", 0),
-                    "output_tokens": initial_state.get("output_tokens", 0),
-                    "tokens": initial_state.get("input_tokens", 0)
-                    + initial_state.get("output_tokens", 0),
-                },
-            )
+            safe_metadata = {
+                "input_tokens": initial_state.get("input_tokens", 0),
+                "output_tokens": initial_state.get("output_tokens", 0),
+                "tokens": initial_state.get("input_tokens", 0)
+                + initial_state.get("output_tokens", 0),
+            }
             return {}, safe_metadata, str(e)

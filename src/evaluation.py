@@ -204,6 +204,8 @@ class BenchmarkEvaluator:
                 round(meta_duration, 3) if meta_duration is not None else None
             )
 
+        total_target_fields = len(target_fields)
+
         result_entry = {
             "condition": condition_id,
             "complexity": complexity_level,
@@ -214,6 +216,10 @@ class BenchmarkEvaluator:
             "is_hallucination": is_hallucination,
             "is_numeric_hallucination": is_numeric_hallucination,
             "is_text_hallucination": is_text_hallucination,
+            "tp": tp,
+            "fp": fp,
+            "fn": fn,
+            "total_target_fields": total_target_fields,
             "fields": [
                 {
                     "field_name": field,

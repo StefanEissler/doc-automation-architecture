@@ -33,8 +33,7 @@ class SinglePromptCondition(BaseCondition):
         human_msg = HumanMessage(content=f"Dokumententext:\n{document.content}")
 
         prompts = [system_msg, human_msg]
-        # Harter LLM-Fehler (Ollama offline, Netzwerk etc.) propagiert bewusst
-        # nach oben zum äußeren try/except in run_experiment.
+
         response = self.llm.invoke(prompts)
 
         input_tokens = 0

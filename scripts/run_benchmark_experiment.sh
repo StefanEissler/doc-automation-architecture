@@ -43,7 +43,7 @@ fi
 
 # Ollama Daemon im Hintergrund starten (ohne 'bash -c')
 echo "Starte Ollama Daemon..."
-enroot start -m "$OLLAMA_MODELS:/root/.ollama" --rw ollama_container serve &
+enroot start -m "$OLLAMA_MODELS:/root/.ollama" --rw ollama_container serve > "$WS_DIR/log/ollama_daemon.log" 2>&1 &
 
 sleep 20
 

@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import Dict, Optional, Tuple, List, TypedDict, Any
+from xml.etree.ElementInclude import include
 
 from pydantic import BaseModel, Field, create_model
 from langchain.agents import create_agent
@@ -99,27 +100,28 @@ class MultiAgentCondition(BaseCondition):
             ),
         ]
 
-        planner_result = self.llm_json.with_structured_output(PlannerOutput)
+        planner_result = self.llm_json.with_structured_output(
+            PlannerOutput, include_raw=True
+        )
 
         try:
             response = planner_result.invoke(prompt)
-            reasoning = response.reasoning
-            strategy = response.strategy
+            parsed = response.get("parsed")
+            raw = response.get("raw")
+
+            if parsed:
+                reasoning = parsed.reasoning
+                strategy = parsed.strategy
+            else:
+                reasoning, strategy = "Parsing Error.", "Standard-Extraktion anwenden."
+
+            if raw and hasattr(raw, "usage_metadata") and raw.usage_metadata:
+                in_tok = raw.usage_metadata.get("input_tokens", 0)
+                out_tok = raw.usage_metadata.get("output_tokens", 0)
         except Exception as e:
             self.logger.error(f"C4: Konnte Planner-JSON nicht parsen. Fehler: {e}")
             reasoning = "Parsing Error."
             strategy = "Standard-Extraktion anwenden."
-
-        in_tok = (
-            response.usage_metadata.get("input_tokens", 0)
-            if hasattr(response, "usage_metadata") and response.usage_metadata
-            else 0
-        )
-        out_tok = (
-            response.usage_metadata.get("output_tokens", 0)
-            if hasattr(response, "usage_metadata") and response.usage_metadata
-            else 0
-        )
 
         return {
             "planner_reasoning": reasoning,
@@ -132,30 +134,18 @@ class MultiAgentCondition(BaseCondition):
         self.logger.info(
             f"C4: Extractor arbeitet. Versuch: {state['correction_count'] + 1}"
         )
-
         target_str = ", ".join(state["target_fields"])
         feedback_str = (
-            f"\n<feedback>\nFEHLER-FEEDBACK DES REVIEWERS:\n{state['validation_errors']}\nBEHEBE DIESE FEHLER ZWINGEND IN DIESEM VERSUCH!\n</feedback>"
+            f"\n<feedback>\nFEHLER-FEEDBACK DES REVIEWERS:\n{state['validation_errors']}\n</feedback>"
             if state.get("validation_errors")
             else ""
         )
 
-        system_prompt = (
-            "Du bist der Executor-Agent für Datenextraktion.\n"
-            f"Zielschema der Felder: {target_str}\n\n"
-            "WICHTIGE REGELN (STRICT COMPLIANCE):\n"
-            "1. Wenn eine Information im Dokument fehlt, setze den Wert auf null. Erfinde NIEMALS Daten!\n"
-            "2. Du darfst ausschließlich Fakten verwenden, die exakt so im Text stehen.\n"
-            "3. Halte dich exakt an die Anweisungen des Planners.\n\n"
-            "Plan des Planners:\n"
-            f"<planner_strategy>\n{state.get('planner_strategy', '')}\n</planner_strategy>\n"
-            f"{feedback_str}"
-        )
-
+        system_prompt = f"Du bist der Executor-Agent für Datenextraktion.\nZielschema: {target_str}\nPlan:\n{state.get('planner_strategy', '')}\n{feedback_str}"
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(
-                content=f"Hier ist das Dokument:\n<document>\n{state['document_content']}\n</document>\n\nLies das Dokument, extrahiere die Daten und gib am Ende alle Werte als Text zurück."
+                content=f"Dokument:\n<document>\n{state['document_content']}\n</document>\nExtrahiere die Daten als Text."
             ),
         ]
 
@@ -166,28 +156,47 @@ class MultiAgentCondition(BaseCondition):
             {"messages": messages}, stream_mode="values"
         ):
             final_state = chunk
-            if (
-                isinstance(chunk, AIMessage)
-                and hasattr(chunk, "usage_metadata")
-                and chunk.usage_metadata
-            ):
-                in_tok += chunk.usage_metadata.get("input_tokens", 0)
-                out_tok += chunk.usage_metadata.get("output_tokens", 0)
 
-        final_message = final_state["messages"][-1].content
+        if final_state and "messages" in final_state:
+            for msg in final_state["messages"]:
+                if (
+                    isinstance(msg, AIMessage)
+                    and hasattr(msg, "usage_metadata")
+                    and msg.usage_metadata
+                ):
+                    in_tok += msg.usage_metadata.get("input_tokens", 0)
+                    out_tok += msg.usage_metadata.get("output_tokens", 0)
+
+        final_message = (
+            final_state["messages"][-1].content if "messages" in final_state else ""
+        )
 
         try:
             field_definitions = {
                 field: (Optional[str], None) for field in state["target_fields"]
             }
             ExtractionSchema = create_model("ExtractionSchema", **field_definitions)
-            structured_parser = self.llm_json.with_structured_output(ExtractionSchema)
 
-            clean_prompt = f"Wandle diesen unstrukturierten Extraktionstext exakt in das geforderte JSON-Schema um. Ändere keine extrahierten Werte!\n\nText:\n{final_message}"
-            clean_response = structured_parser.invoke(
-                [HumanMessage(content=clean_prompt)]
+            structured_parser = self.llm_json.with_structured_output(
+                ExtractionSchema, include_raw=True
             )
-            data = clean_response.dict() if clean_response else {}
+            clean_response = structured_parser.invoke(
+                [HumanMessage(content=f"Wandle um in JSON:\n{final_message}")]
+            )
+
+            parsed_data = clean_response.get("parsed")
+            raw_cleaner = clean_response.get("raw")
+
+            data = parsed_data.dict() if parsed_data else {}
+
+            if (
+                raw_cleaner
+                and hasattr(raw_cleaner, "usage_metadata")
+                and raw_cleaner.usage_metadata
+            ):
+                in_tok += raw_cleaner.usage_metadata.get("input_tokens", 0)
+                out_tok += raw_cleaner.usage_metadata.get("output_tokens", 0)
+
         except Exception as e:
             self.logger.error(
                 f"C4: Konnte JSON vom LLM nicht strukturieren. Fehler: {e}"
@@ -221,25 +230,36 @@ class MultiAgentCondition(BaseCondition):
             ),
         ]
 
-        validator_result = self.llm_json.with_structured_output(ValidatorOutput)
+        validator_result = self.llm_json.with_structured_output(
+            ValidatorOutput, include_raw=True
+        )
+        in_tok, out_tok = 0, 0
 
         try:
             response = validator_result.invoke(prompt)
-            status = response.status.upper()
-            review = response.feedback
+            parsed = response.get("parsed")
+            raw = response.get("raw")
+
+            if parsed:
+                status, review = parsed.status.upper(), parsed.feedback
+            else:
+                status, review = "FAILED", "Parser Error in Validation."
+
+            if raw and hasattr(raw, "usage_metadata") and raw.usage_metadata:
+                in_tok = raw.usage_metadata.get("input_tokens", 0)
+                out_tok = raw.usage_metadata.get("output_tokens", 0)
+
         except Exception as e:
             self.logger.error(f"C4: Validator Fehler: {e}")
-            status = "FAILED"
-            review = "Kritischer Fehler bei der Validierung."
+            status, review = "FAILED", "Kritischer Fehler bei der Validierung."
 
-        # BUGFIX: python_missing ist restlos entfernt. Das LLM entscheidet!
-        final_errors = ""
-        if status != "PASSED":
-            final_errors += f"KI-Kritik (Bitte beheben!): {review}"
+        final_errors = f"KI-Kritik: {review}" if status != "PASSED" else ""
 
         return {
             "validation_errors": final_errors.strip(),
             "correction_count": state.get("correction_count", 0) + 1,
+            "input_tokens": state.get("input_tokens", 0) + in_tok,
+            "output_tokens": state.get("output_tokens", 0) + out_tok,
         }
 
     def _should_continue(self, state: MultiAgentState) -> str:
@@ -284,6 +304,16 @@ class MultiAgentCondition(BaseCondition):
 
             if result_state["correction_count"] > self.max_retries:
                 return result_state["final_output"], metadata, None
+
+            self.logger.debug("C4 DEBUG OUTPUT:")
+            self.logger.debug(f"Raw Extraction:\n{result_state.get('raw_extraction')}")
+            self.logger.debug(
+                f"Final Output (Fallback):\n{result_state.get('final_output')}"
+            )
+            self.logger.debug(f"Token Metadata:\n{metadata}")
+            self.logger.debug(
+                f"Correction Loops Needed: {result_state.get('correction_count')}"
+            )
 
             return result_state["raw_extraction"], metadata, None
 

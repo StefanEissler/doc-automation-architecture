@@ -108,16 +108,9 @@ class SingleAgentCondition(BaseCondition):
 
         try:
             for chunk in agent.stream({"messages": messages}, stream_mode="values"):
-                # Token Tracking
-                if (
-                    isinstance(chunk, AIMessage)
-                    and hasattr(chunk, "usage_metadata")
-                    and chunk.usage_metadata
-                ):
-                    input_tokens += chunk.usage_metadata.get("input_tokens", 0)
-                    output_tokens += chunk.usage_metadata.get("output_tokens", 0)
-
+                final_state = chunk
                 latest_message = chunk["messages"][-1]
+
                 if isinstance(latest_message, AIMessage) and hasattr(
                     latest_message, "tool_calls"
                 ):
@@ -125,15 +118,28 @@ class SingleAgentCondition(BaseCondition):
                         if tc["name"] == "submit_extracted_data":
                             extracted_data = tc["args"]
                             break
-
                 if extracted_data:
                     break
+
+            if final_state and "messages" in final_state:
+                for msg in final_state["messages"]:
+                    if (
+                        isinstance(msg, AIMessage)
+                        and hasattr(msg, "usage_metadata")
+                        and msg.usage_metadata
+                    ):
+                        input_tokens += msg.usage_metadata.get("input_tokens", 0)
+                        output_tokens += msg.usage_metadata.get("output_tokens", 0)
 
             metadata = {
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "tokens": input_tokens + output_tokens,
             }
+
+            self.logger.debug("C3 DEBUG OUTPUT:")
+            self.logger.debug(f"Tool Result (Final Data):\n{extracted_data}")
+            self.logger.debug(f"Token Metadata:\n{metadata}")
 
             self.logger.info(f"Finished C3 for: {document.id}")
             return extracted_data, metadata, None

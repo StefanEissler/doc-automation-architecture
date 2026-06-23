@@ -9,7 +9,7 @@ import requests
 from langchain_ollama import ChatOllama
 
 from src.architectures.c1_rule_based import RuleBasedCondition
-from src.architectures.c2_singe_prompt import SinglePromptCondition
+from src.architectures.c2_single_prompt import SinglePromptCondition
 from src.architectures.c3_ai_agent import SingleAgentCondition
 from src.architectures.c4_multi_ai_agents import MultiAgentCondition
 from src.data_loader import DataLoader

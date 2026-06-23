@@ -3,26 +3,25 @@
 #SBATCH --partition=dev_gpu_a100_il
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --output=pilot_output_%j.out
 #SBATCH --error=pilot_error_%j.err
 
-echo "Starte Pilot-Experiment auf bwUniCluster 3.0"
+echo "Starte Pilotexperiment auf bwUniCluster"
 
 export PYTHONPATH=""
 export PYTHONNOUSERSITE=1
 source /opt/bwhpc/common/etc/easybuild/enable_eb_modules
 module load Python/3.12.3-GCCcore-13.3.0
 
-echo "Räume alte Prozesse auf..."
+echo "Raeume alte Prozesse auf"
 pkill -f "ollama serve" || true
 pkill -f "ollama pull" || true
 sleep 3
 
-# Workspace finden und validieren
 WS_DIR=$(ws_find llm_data)
 if [ -z "$WS_DIR" ]; then
-    echo "Kritischer Fehler: Workspace 'llm_data' nicht gefunden!"
+    echo "Kritischer Fehler Workspace nicht gefunden"
     exit 1
 fi
 
@@ -31,27 +30,35 @@ export ENROOT_CACHE_PATH="$WS_DIR/enroot_cache"
 export OLLAMA_MODELS="$WS_DIR/ollama_models"
 export XDG_DATA_HOME="$WS_DIR"
 
-mkdir -p "$ENROOT_DATA_PATH" "$ENROOT_CACHE_PATH" "$OLLAMA_MODELS"
+# HIER ist die korrekte Position fuer die Verzeichniserstellung
+mkdir -p "$ENROOT_DATA_PATH" "$ENROOT_CACHE_PATH" "$OLLAMA_MODELS" "$WS_DIR/log"
 
-# Ollama Container importieren
 if [ ! -f "$WS_DIR/ollama.sqsh" ]; then
-    echo "Importiere Ollama Container..."
+    echo "Importiere Ollama Container"
     cd "$WS_DIR" || exit 1
     enroot import --output ollama.sqsh docker://ollama/ollama
     enroot create --name ollama_container ollama.sqsh
 fi
 
-# Ollama Daemon im Hintergrund starten (ohne 'bash -c')
-echo "Starte Ollama Daemon..."
+echo "Starte Ollama Daemon"
 enroot start -m "$OLLAMA_MODELS:/root/.ollama" --rw ollama_container serve > "$WS_DIR/log/ollama_daemon.log" 2>&1 &
 
-sleep 20
+echo "Warte auf Ollama API"
+timeout=120
+elapsed=0
+while ! curl -s http://localhost:11434/api/version > /dev/null; do
+    sleep 5
+    elapsed=$((elapsed+5))
+    if [ "$elapsed" -ge "$timeout" ]; then
+        echo "KRITISCHER FEHLER API startete nicht innerhalb von $timeout Sekunden"
+        exit 1
+    fi
+done
+echo "Ollama API ist erreichbar"
 
-# Ins Projektverzeichnis wechseln
 cd "$HOME/doc-automation-architecture" || exit 1
 
-# Benchmark-Pipeline ausführen
-echo "Starte Benchmark über die Architektur-Bedingungen..."
+echo "Starte Benchmark Experiment:"
 uv run python -m main --experiment A --model llama3.3
 
-echo "Pilot-Experiment erfolgreich beendet."
+echo "Pilotexperiment erfolgreich beendet"

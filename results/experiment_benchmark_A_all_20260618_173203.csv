@@ -1,2 +1,0 @@
-condition,complexity,doc_id,f1_score,precision,recall,is_hallucination,input_tokens,output_tokens,all_tokens,duration_seconds,model
-C4,L1,0ea66228-6efd-8386-8000-e2e0c72e3825.pdf,0.0,0.0,0.0,True,4720,970,5690,102.07,llama3.1:8b

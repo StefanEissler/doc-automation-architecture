@@ -264,9 +264,8 @@ class MultiAgentCondition(BaseCondition):
 
     def _should_continue(self, state: MultiAgentState) -> str:
         if state["validation_errors"] and state["correction_count"] <= self.max_retries:
-            self.logger.warning(
-                f"C4: Fehler gefunden -> Gehe in Korrektur-Loop! (Fehler: {state['validation_errors']})"
-            )
+            self.logger.info("C4: Reviewer schickt in Korrektur-Loop")
+            self.logger.debug(f"C4: Fehler: {state['validation_errors']}")
             return "continue"
 
         if state["validation_errors"]:

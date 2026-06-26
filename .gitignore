@@ -13,3 +13,5 @@ wheels/
 
 data/*
 !data/data_backup.zip
+
+.vscode

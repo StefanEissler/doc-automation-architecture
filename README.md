@@ -166,6 +166,7 @@ uv run python -m main [OPTIONS]
 | `--limit` | `int` | `None` | Begrenzt die Zahl geladener Dokumente (z.B. für Pilot-Läufe). |
 | `--provider` | `openai`, `ollama` | `ollama` | LLM-Provider. ⚠️ Nur Ollama implementiert |
 | `--model` | `str` | `llama3.3` | Spezifischer Modellname für den gewählten Provider (z.B. `llama3.3`, `gpt-4o-mini`, `gpt-4o`). |
+| `--log` | `str` | `INFO` | Einstellung des loggers mit DEBUG output oder nur INFO als Default |
 
 
 ### Beispielaufrufe

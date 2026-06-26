@@ -1,9 +1,9 @@
 import logging
 from typing import Dict, Optional, Tuple
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.language_models.chat_models import BaseChatModel
-from pydantic import create_model
+from langchain.messages import HumanMessage, SystemMessage
+from langchain.chat_models import BaseChatModel
+from pydantic import Field, create_model
 
 from src.architectures.base import BaseCondition
 from src.data_loader import Document
@@ -15,19 +15,24 @@ class SinglePromptCondition(BaseCondition):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
-        # Dynamisches Pydantic-Schema basierend auf den Ziel-Feldern generieren
-        field_definitions = {
-            field: (Optional[str], None) for field in document.target_fields
-        }
-        ExtractionSchema = create_model("ExtractionSchema", **field_definitions)
+        ExtractionSchema = document.schema_class
+        self.logger.debug(document.schema_class)
+
+        if not ExtractionSchema:
+            self.logger.error(
+                f"Doc {document.id} hat kein valides Schema. Überspringen."
+            )
+            return {}, {}, "No schema available"
 
         target_fields_str = ", ".join(document.target_fields)
 
         system_msg = SystemMessage(
             content=(
-                "Du bist ein Experte für die Extraktion von Informationen aus Geschäftsdokumenten.\n"
-                f"Extrahiere EXAKT diese Pflichtfelder: {target_fields_str}.\n"
-                "Erfinde keine Daten. Setze Felder auf null, wenn sie fehlen."
+                "You are an expert data extraction assistant specialized in B2B ad-buy forms and invoices.\n"
+                "Your task is to extract exact values from the provided OCR text according to the required schema.\n"
+                f"These are the target fields to extract: {target_fields_str}.\n"
+                "You MUST extract all tabular rows into the line_items array.\n"
+                "If a value is missing, return null. Do NOT create or hallucinate any data!"
             )
         )
         human_msg = HumanMessage(content=f"Dokumententext:\n{document.content}")

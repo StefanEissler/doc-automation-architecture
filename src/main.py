@@ -15,11 +15,14 @@ from src.architectures.c4_multi_ai_agents import MultiAgentCondition
 from src.data_loader import DataLoader
 from src.evaluation import BenchmarkEvaluator
 
-# Basic Logging Configuration
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+# Basic Logging Configuration
+def setup_logging(level_name: str):
+    logging.basicConfig(
+        level=level_name.upper(), format="%(asctime)s - %(levelname)s - %(message)s"
+    )
 
 
 def is_ollama_server_running(
@@ -77,7 +80,6 @@ def get_llm(provider: str, model: str, ollama_model_parameters: dict):
 
 def run_experiment():
     try:
-        logging.info("Starting Document Automation Benchmark Experiment")
         parser = argparse.ArgumentParser(description="Document Automation Benchmark")
         parser.add_argument(
             "--condition",
@@ -111,7 +113,6 @@ def run_experiment():
         parser.add_argument(
             "--provider",
             type=str,
-            nargs="+",
             choices=["vertex", "ollama"],
             default="ollama",
             help="LLM provider to use for conditions C2-C4",
@@ -122,8 +123,18 @@ def run_experiment():
             default="llama3",
             help="Name of the Ollama model to use",
         )
+        parser.add_argument(
+            "--log",
+            type=str,
+            default="INFO",
+            choices=["INFO", "DEBUG"],
+            help="Puts the logger in DEBUG or INFO mode",
+        )
 
         args = parser.parse_args()
+
+        setup_logging(args.log)
+        logging.info("Starting Document Automation Benchmark Experiment")
 
         evaluator = BenchmarkEvaluator(results_dir=str(PROJECT_ROOT / "results"))
         data_dir_path = str(PROJECT_ROOT / "data" / "processed")
@@ -166,6 +177,7 @@ def run_experiment():
                 logging.info(
                     f"Running {condition_id} on Document {doc.id} (Complexity: {doc.complexity}) (Doc: {idx}/{len(documents)})"
                 )
+                logging.debug(doc)
 
                 prediction: dict = {}
                 meta_data: dict = {}

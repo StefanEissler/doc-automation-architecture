@@ -1,11 +1,11 @@
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from langchain.messages import AIMessage, HumanMessage
 from langchain.agents import create_agent
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import tool, StructuredTool
-from langchain_core.language_models.chat_models import BaseChatModel
-from pydantic import create_model
+from langchain.tools import tool
+from langchain.chat_models import BaseChatModel
+from pydantic import Field, create_model
 
 from src.architectures.base import BaseCondition
 from src.data_loader import Document
@@ -61,94 +61,107 @@ class SingleAgentCondition(BaseCondition):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
+        ExtractionSchema = document.schema_class
+
         doc_tools = get_document_tools(document.content)
+
         target_fields_str = ", ".join(document.target_fields)
-
-        field_definitions = {
-            field: (Optional[str], None) for field in document.target_fields
-        }
-        ExtractionSchema = create_model("ExtractionSchema", **field_definitions)
-
-        def submit_data(**kwargs):
-            return "Daten erfolgreich eingereicht. Beende den Task."
-
-        submit_tool = StructuredTool.from_function(
-            func=submit_data,
-            name="submit_extracted_data",
-            description="NUTZE DIESES TOOL ZWINGEND ALS ALLERLETZTE AKTION. Übergib hier die finalen, extrahierten Daten.",
-            args_schema=ExtractionSchema,
-        )
-        doc_tools.append(submit_tool)
-
         system_prompt = (
             "Du bist ein autonomer Extraktionsagent für Geschäftsdaten.\n"
             f"Deine Aufgabe ist die Extraktion folgender Pflichtfelder: {target_fields_str}.\n"
             "Nutze Tools, um Fakten zu prüfen.\n"
-            "WICHTIG: Wenn du alle Daten gefunden hast, MUSST du als allerletzten Schritt das Tool "
-            "'submit_extracted_data' aufrufen, um deine Ergebnisse abzugeben. Erfinde keine Werte."
+            "WICHTIG: Erfinde keine Werte; übernehme Texte exakt aus dem Dokument.\n"
+            "Feldtypen:\n"
+            "- Alle Felder außer 'line_items': einfacher String (z.B. '476.00' oder 'Friends of Jeff')\n"
+            "- 'line_items': Liste von Strings, ein Eintrag pro Zeile\n"
+            "NIEMALS Dictionaries verwenden."
         )
 
         agent = create_agent(
             model=self.llm,
             tools=doc_tools,
+            system_prompt=system_prompt,
+            response_format=ExtractionSchema,
         )
 
-        self.logger.info(f"C3 Starte echten Single Agent für Dokument {document.id}")
+        task_prompt = (
+            f"### New Documents ###\n\n"
+            f"(<Document>)\n"
+            f"{document.content}\n"
+            f"(</Document>)\n\n"
+            f"(<Task>)\n"
+            f"Extrahiere die geforderten Werte aus dem Dokument. Achte extrem genau auf den Kontext, um Halluzinationen zu vermeiden. "
+            f"Werte müssen exakt aus dem Text übernommen werden.\n"
+            f"Ziel-Schema:\n{target_fields_str}\n"
+            f"(</Task>)\n\n"
+            f"Gebe als Antwort ausschließlich das Pydantic-Objekt im geforderten Schema zurück."
+        )
+
+        self.logger.info(f"C3 Starte Single Agent für Dokument {document.id}")
 
         input_tokens, output_tokens = 0, 0
+        used_tools = []
         extracted_data = {}
 
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(
-                content=f"DOKUMENTENTEXT:\n<document>\n{document.content}\n</document>\n\n"
-                "Starte jetzt die Extraktion."
-            ),
-        ]
-
         try:
-            for chunk in agent.stream({"messages": messages}, stream_mode="values"):
-                final_state = chunk
-                latest_message = chunk["messages"][-1]
+            for chunk in agent.stream(
+                {"messages": [HumanMessage(content=task_prompt)]},
+                stream_mode="updates",
+                version="v2",
+            ):
+                self.logger.debug(f"STREAM CHUNK: {chunk}")
+                if chunk["type"] == "updates":
+                    for node_name, node_output in chunk["data"].items():
+                        if node_name == "tools":
+                            for msg in node_output.get("messages", []):
+                                used_tools.append(msg.name)
+                                self.logger.info(
+                                    f"Tool {msg.name} wurde erfolgreich ausgeführt."
+                                )
 
-                if isinstance(latest_message, AIMessage) and hasattr(
-                    latest_message, "tool_calls"
-                ):
-                    for tc in latest_message.tool_calls:
-                        if tc["name"] == "submit_extracted_data":
-                            extracted_data = tc["args"]
-                            break
-                if extracted_data:
-                    break
+                        if "messages" in node_output:
+                            for msg in node_output["messages"]:
 
-            if final_state and "messages" in final_state:
-                for msg in final_state["messages"]:
-                    if (
-                        isinstance(msg, AIMessage)
-                        and hasattr(msg, "usage_metadata")
-                        and msg.usage_metadata
-                    ):
-                        input_tokens += msg.usage_metadata.get("input_tokens", 0)
-                        output_tokens += msg.usage_metadata.get("output_tokens", 0)
+                                # Token Tracking
+                                if isinstance(msg, AIMessage):
+                                    usage = getattr(msg, "usage_metadata", None)
+                                    if not usage and isinstance(msg, dict):
+                                        usage = msg.get("usage_metadata")
+                                    if usage:
+                                        input_tokens += usage.get("input_tokens", 0)
+                                        output_tokens += usage.get("output_tokens", 0)
+
+                                # Daten Extraktion
+                                if isinstance(msg, AIMessage) and hasattr(
+                                    msg, "tool_calls"
+                                ):
+                                    for tc in msg.tool_calls:
+                                        if tc["name"] == "ExtractionSchema":
+                                            extracted_data = tc["args"]
+
+            used_tools = list(dict.fromkeys(used_tools))
 
             metadata = {
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
-                "tokens": input_tokens + output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+                "used_tools": used_tools,
             }
 
             self.logger.debug("C3 DEBUG OUTPUT:")
-            self.logger.debug(f"Tool Result (Final Data):\n{extracted_data}")
+            self.logger.debug(f"Structured Result:\n{extracted_data}")
             self.logger.debug(f"Token Metadata:\n{metadata}")
-
             self.logger.info(f"Finished C3 for: {document.id}")
+
             return extracted_data, metadata, None
 
         except Exception as e:
             self.logger.error(f"C3 Error: {e}")
             safe_metadata = {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "tokens": input_tokens + output_tokens,
+                "agent_input_tokens": input_tokens,
+                "agent_output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+                "used_tools": used_tools,
             }
+
             return {}, safe_metadata, str(e)

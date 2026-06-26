@@ -220,20 +220,13 @@ class BenchmarkEvaluator:
             "fp": fp,
             "fn": fn,
             "total_target_fields": total_target_fields,
-            "fields": [
-                {
-                    "field_name": field,
-                    "ground_truth": ground_truth_data.get(field),
-                    "extracted": predicted_data.get(field),
-                }
-                for field in target_fields
-            ],
             "input_tokens": metadata.get("input_tokens"),
             "output_tokens": metadata.get("output_tokens"),
             "all_tokens": metadata.get("tokens"),
+            "used_tools": json.dumps(metadata.get("used_tools", [])),
             "duration_seconds": duration_seconds,
-            "ground_truth_raw": json.dumps(ground_truth_data, ensure_ascii=False),
-            "predicted_raw": json.dumps(predicted_data, ensure_ascii=False),
+            "ground_truth": json.dumps(ground_truth_data, ensure_ascii=False),
+            "predicted": json.dumps(predicted_data, ensure_ascii=False),
             "model": model,
             "status": "ERROR" if error else "OK",
             "error_message": str(error) if error else "",

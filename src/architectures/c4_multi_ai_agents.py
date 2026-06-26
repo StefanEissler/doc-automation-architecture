@@ -1,11 +1,9 @@
-# src/architectures/c4_multi_ai_agents.py
 import json
 import logging
 import traceback
 from typing import Dict, Optional, Tuple, List, TypedDict, Any
-from langchain.agents import create_agent
 from pydantic import BaseModel, Field
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.architectures.base import BaseCondition
@@ -15,33 +13,29 @@ from src.data_loader import Document
 # Pydantic Schemata für Planner und Validator
 class PlannerOutput(BaseModel):
     reasoning: str = Field(description="Detailed analysis of document structure")
-    strategy: str = Field(
-        description="Step-by-step extraction instructions including which tools to use"
-    )
+    strategy: str = Field(description="Step-by-step extraction instructions")
 
 
 class ValidatorOutput(BaseModel):
     status: str = Field(description="Must be exactly 'PASSED' or 'FAILED'")
-    feedback: str = Field(
-        description="Detailed feedback on hallucinations or missing values"
-    )
+    feedback: str = Field(description="Feedback on hallucinations or missing values")
 
 
 # MAS State
 class MultiAgentState(TypedDict):
+    """State definition for LangGraph workflow"""
+
     document_content: str
     target_fields: List[str]
     schema_class: Optional[type]
     planner_reasoning: str
     planner_strategy: str
     raw_extraction: Dict[str, Any]
-    intermediate_steps: List[Tuple]
     final_output: Dict[str, Any]
     validation_errors: str
     correction_count: int
     input_tokens: int
     output_tokens: int
-    used_tools: List[str]
 
 
 class MultiAgentCondition(BaseCondition):
@@ -53,67 +47,73 @@ class MultiAgentCondition(BaseCondition):
         self.workflow = self._create_workflow()
 
     def _create_workflow(self):
+        """Define LangGraph workflow with proper state updates"""
         from langgraph.graph import StateGraph, START, END
 
         workflow = StateGraph(MultiAgentState)
 
         workflow.add_node("planner", self._planner_node)
-        workflow.add_node("extractor_with_tools", self._extractor_node)
+        workflow.add_node("extractor", self._extractor_node)
         workflow.add_node("validator", self._validator_node)
 
         workflow.add_edge(START, "planner")
-        workflow.add_edge("planner", "extractor_with_tools")
-        workflow.add_edge("extractor_with_tools", "validator")
+        workflow.add_edge("planner", "extractor")
+        workflow.add_edge("extractor", "validator")
 
         workflow.add_conditional_edges(
-            "validator",
-            self._should_continue,
-            {"continue": "extractor_with_tools", "end": END},
+            "validator", self._should_continue, {"continue": "extractor", "end": END}
         )
 
         return workflow.compile()
 
-    def _build_extractor_agent(self):
-        """Build agent WITH tool support"""
-        return None  # Lazy load below
-
     def _planner_node(self, state: MultiAgentState) -> Dict:
-        """Plan extraction strategy WITHOUT tool calls"""
-        self.logger.info("C4: Planning...")
+        """Node 1: Plan extraction strategy"""
+        self.logger.info("C4: Planning extraction...")
 
         prompt = [
             SystemMessage(
                 content=(
-                    f"You are a Planner Agent. Target Fields: {', '.join(state['target_fields'])}\n"
-                    "Analyze structure, identify tables, metadata locations.\n"
+                    f"You are a Planner Agent.\n"
+                    f"Target Fields: {', '.join(state['target_fields'])}\n"
+                    "Analyze document structure and create extraction strategy.\n"
                     "DO NOT EXTRACT DATA YOURSELF!\n"
-                    "Recommend IF and WHERE tools might help (search, locate)."
+                    "Identify where each field likely appears in the text."
                 )
             ),
             HumanMessage(content=state["document_content"]),
         ]
 
+        # Use structured output to guarantee valid JSON response
         planner_llm = self.llm_json.with_structured_output(
             PlannerOutput, include_raw=True
         )
-        response = planner_llm.invoke(prompt)
 
-        parsed = response.get("parsed")
-        raw = response.get("raw")
+        try:
+            response = planner_llm.invoke(prompt)
+            parsed = response.get("parsed")
+            raw = response.get("raw")
 
-        reasoning = parsed.reasoning if parsed else "Analysis failed."
-        strategy = parsed.strategy if parsed else "Default extraction."
+            reasoning = parsed.reasoning if parsed else "Analysis failed."
+            strategy = parsed.strategy if parsed else "Use default extraction."
 
-        tokens_in = (
-            raw.usage_metadata.get("input_tokens", 0)
-            if raw and hasattr(raw, "usage_metadata")
-            else 0
-        )
-        tokens_out = (
-            raw.usage_metadata.get("output_tokens", 0)
-            if raw and hasattr(raw, "usage_metadata")
-            else 0
-        )
+            tokens_in = (
+                raw.usage_metadata.get("input_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
+            tokens_out = (
+                raw.usage_metadata.get("output_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
+
+        except Exception as e:
+            self.logger.error(f"C4 Planner Error: {e}")
+            reasoning, strategy = (
+                "Planning error occurred.",
+                "Default extraction strategy.",
+            )
+            tokens_in = tokens_out = 0
 
         return {
             "planner_reasoning": reasoning,
@@ -123,151 +123,125 @@ class MultiAgentCondition(BaseCondition):
         }
 
     def _extractor_node(self, state: MultiAgentState) -> Dict:
-        """Extractor with TOOLS available BUT final output must match schema"""
+        """Node 2: Extract data using dynamic schema"""
         self.logger.info(
-            f"C4: Extracting with tools (Attempt {state.get('correction_count', 0) + 1})"
+            f"C4: Extracting (Attempt {state.get('correction_count', 0) + 1})"
         )
-
-        from src.architectures.c3_ai_agent import get_document_tools
 
         ExtractionSchema = state["schema_class"]
+
         if not ExtractionSchema:
             self.logger.error("C4: No schema available!")
-            return {"raw_extraction": {}, "final_output": {}}
+            return {
+                "raw_extraction": {},
+                "final_output": {},
+                "input_tokens": state.get("input_tokens", 0),
+                "output_tokens": state.get("output_tokens", 0),
+            }
 
-        # Get tools for this document
-        tools = get_document_tools(state["document_content"])
-
-        # Create agent that can use tools
-        react_agent = create_agent(
-            model=self.llm_text,
-            tools=tools,
-        )
-
-        # Build enhanced prompt with strategy + feedback
         strategy = state.get("planner_strategy", "")
         feedback = state.get("validation_errors", "")
 
-        agent_prompt = (
-            f"Extraction Task:\n"
-            f"Target Fields: {', '.join(state['target_fields'])}\n\n"
-            f"Plan/Strategy: {strategy}\n\n"
-            f"{'PREVIOUS FEEDBACK:<br>' + feedback + '</FEEDBACK>' if feedback else ''}\n\n"
-            f"<Document>\n{state['document_content']}\n</Document>\n\n"
-            f"You MAY USE TOOLS to locate information (search_text, extract_table).\n"
-            f"After gathering info, format output as JSON matching this exact schema keys only: "
-            f"{list(state['target_fields'])}"
+        system_prompt = (
+            "You are an extraction agent. Extract data according to these fields:\n"
+            f"{', '.join(state['target_fields'])}\n\n"
+            f"Strategy from Planner: {strategy}\n\n"
+            f"{'<PREVIOUS FEEDBACK>' + feedback + '</PREVIOUS FEEDBACK>' if feedback else ''}\n\n"
+            "Return ONLY JSON matching the schema keys. No markdown, no extra text."
         )
 
-        token_tracking = {"in": 0, "out": 0}
-        extracted_data = {}
-        used_tool_names = []
+        prompt = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=f"<DOCUMENT>\n{state['document_content']}\n</DOCUMENT>"
+            ),
+        ]
+
+        structured_llm = self.llm_text.with_structured_output(
+            ExtractionSchema, include_raw=True
+        )
 
         try:
-            agent_result = react_agent.invoke(agent_prompt)
+            response = structured_llm.invoke(prompt)
+            parsed = response.get("parsed")
+            raw = response.get("raw")
 
-            # Track tool usage
-            if "intermediate_steps" in agent_result:
-                for step in agent_result.get("intermediate_steps", []):
-                    tool_call = step[0] if step else None
-                    if tool_call and hasattr(tool_call, "tool"):
-                        used_tool_names.append(tool_call.tool)
-                        token_tracking["in"] += getattr(tool_call, "token_usage_in", 0)
+            data = parsed.model_dump() if parsed else {}
 
-            final_msg = agent_result.get("output", "{}")
-
-            # Extract JSON from possible chatter/marker
-            if "<extraction>" in final_msg.lower():
-                import re
-
-                match = re.search(
-                    r"<extraction>(.*?)</extraction>",
-                    final_msg,
-                    re.DOTALL | re.IGNORECASE,
-                )
-                if match:
-                    final_msg = match.group(1)
-
-            # Validate against Schema
-            if isinstance(final_msg, dict):
-                extracted_data = final_msg
-            else:
-                try:
-                    # Clean up markdown formatting
-                    clean_json_str = final_msg.strip().strip("```json").strip("```")
-                    extracted_data = json.loads(clean_json_str)
-                except:
-                    # Last resort: parse via LLM cleaner pass
-                    clean_llm = self.llm_json.with_structured_output(
-                        ExtractionSchema, include_raw=True
-                    )
-                    clean_response = clean_llm.invoke(
-                        [HumanMessage(content=f"Convert to JSON:\n{final_msg}")]
-                    )
-                    parsed = clean_response.get("parsed")
-                    if parsed:
-                        extracted_data = parsed.model_dump()
+            tokens_in = (
+                raw.usage_metadata.get("input_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
+            tokens_out = (
+                raw.usage_metadata.get("output_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
 
         except Exception as e:
             self.logger.error(f"C4 Extractor Error: {e}")
-            traceback.print_exc()
-            extracted_data = {}
+            data = {}
+            tokens_in = tokens_out = 0
 
         return {
-            "raw_extraction": extracted_data,
-            "final_output": extracted_data,
-            "intermediate_steps": [
-                (step, {}) for step in used_tool_names
-            ],  # Store tool usage
-            "used_tools": list(set(used_tool_names)),
-            "input_tokens": state.get("input_tokens", 0) + token_tracking["in"],
-            "output_tokens": state.get("output_tokens", 0) + token_tracking["out"],
+            "raw_extraction": data,
+            "final_output": data,
+            "input_tokens": state.get("input_tokens", 0) + tokens_in,
+            "output_tokens": state.get("output_tokens", 0) + tokens_out,
         }
 
     def _validator_node(self, state: MultiAgentState) -> Dict:
-        """Validate with original document context"""
-        self.logger.info("C4: Validating...")
+        """Node 3: Validate extracted data against original document"""
+        self.logger.info("C4: Validating extraction quality...")
 
         data = state.get("raw_extraction", {})
-        documents = state["document_content"]
+        doc_preview = state["document_content"]
 
         prompt = [
             SystemMessage(
                 content=(
                     "You are a validator. Check extraction quality strictly.\n"
                     "Check: 1) Hallucinations? (Values not in document)\n"
-                    "       2) Missing fields? (Required fields null when data exists)\n"
-                    "Status must be 'PASSED' or 'FAILED'."
+                    "       2) Missing fields? (Fields that should exist but are null)\n"
+                    "If data matches document → PASSED\n"
+                    "If errors exist → FAILED with specific feedback"
                 )
             ),
             HumanMessage(
-                content=f"Document:\n{documents[:8000]}...\n\nExtraction:\n{json.dumps(data, indent=2)}"
+                content=f"Document Preview:\n{doc_preview}...\n\nExtracted Data:\n{json.dumps(data, indent=2)}"
             ),
         ]
 
         validator_llm = self.llm_json.with_structured_output(
             ValidatorOutput, include_raw=True
         )
-        response = validator_llm.invoke(prompt)
 
-        parsed = response.get("parsed")
-        raw = response.get("raw")
+        try:
+            response = validator_llm.invoke(prompt)
+            parsed = response.get("parsed")
+            raw = response.get("raw")
 
-        status = parsed.status.upper() if parsed else "FAILED"
-        feedback = parsed.feedback if parsed else "Validation error."
+            status = parsed.status.upper() if parsed else "FAILED"
+            feedback = parsed.feedback if parsed else "Validation parsing error."
 
-        tokens_in = (
-            raw.usage_metadata.get("input_tokens", 0)
-            if raw and hasattr(raw, "usage_metadata")
-            else 0
-        )
-        tokens_out = (
-            raw.usage_metadata.get("output_tokens", 0)
-            if raw and hasattr(raw, "usage_metadata")
-            else 0
-        )
+            tokens_in = (
+                raw.usage_metadata.get("input_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
+            tokens_out = (
+                raw.usage_metadata.get("output_tokens", 0)
+                if raw and hasattr(raw, "usage_metadata")
+                else 0
+            )
 
-        errors = f"Reviewer: {feedback}" if status != "PASSED" else ""
+        except Exception as e:
+            self.logger.error(f"C4 Validator Error: {e}")
+            status, feedback = "FAILED", "Critical validation error."
+            tokens_in = tokens_out = 0
+
+        errors = f"Reviewer Feedback: {feedback}" if status != "PASSED" else ""
 
         return {
             "validation_errors": errors.strip(),
@@ -277,20 +251,23 @@ class MultiAgentCondition(BaseCondition):
         }
 
     def _should_continue(self, state: MultiAgentState) -> str:
-        """Decide whether to loop back for correction"""
+        """Conditional edge: Decide whether to retry"""
         has_errors = bool(state.get("validation_errors"))
         retries_left = state.get("correction_count", 0) < self.max_retries
 
         if has_errors and retries_left:
             self.logger.info(
-                f"C4: Retry ({state.get('correction_count', 0)}/{self.max_retries})"
+                f"C4: Correction Loop (Retry {state.get('correction_count', 0) + 1}/{self.max_retries})"
             )
             return "continue"
 
+        self.logger.info(
+            f"C4: Validation complete. Final status: {'SUCCESS' if not has_errors else 'FAILED after max retries'}"
+        )
         return "end"
 
     def extract_data(self, document: Document) -> Tuple[Dict, Dict, Optional[str]]:
-        """Main entry point with full tool+schema integration"""
+        """Main entry point - invoked by main.py benchmark runner"""
 
         initial_state = {
             "document_content": document.content,
@@ -299,13 +276,11 @@ class MultiAgentCondition(BaseCondition):
             "planner_reasoning": "",
             "planner_strategy": "",
             "raw_extraction": {},
-            "intermediate_steps": [],
             "final_output": {},
             "validation_errors": "",
             "correction_count": 0,
             "input_tokens": 0,
             "output_tokens": 0,
-            "used_tools": [],
         }
 
         try:
@@ -317,18 +292,16 @@ class MultiAgentCondition(BaseCondition):
                 "tokens": result_state.get("input_tokens", 0)
                 + result_state.get("output_tokens", 0),
                 "retries_used": result_state.get("correction_count", 0),
-                "tools_used": result_state.get("used_tools", []),
-                "intermediate_steps_count": len(
-                    result_state.get("intermediate_steps", [])
-                ),
+                "has_validation_error": bool(result_state.get("validation_errors")),
             }
 
             return result_state["raw_extraction"], metadata, None
 
         except Exception as e:
-            self.logger.error(f"C4 Pipeline Error: {e}")
+            self.logger.error(f"C4 Pipeline Failure: {e}")
+            traceback_str = "\n".join(traceback.format_exc().split("\n")[-5:])
             return (
                 {},
-                {"input_tokens": 0, "output_tokens": 0, "tokens": 0, "errors": True},
-                str(e),
+                {"input_tokens": 0, "output_tokens": 0, "tokens": 0, "error": True},
+                str(e) + "\n" + traceback_str,
             )

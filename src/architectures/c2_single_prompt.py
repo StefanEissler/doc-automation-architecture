@@ -35,7 +35,9 @@ class SinglePromptCondition(BaseCondition):
                 "If a value is missing, return null. Do NOT create or hallucinate any data!"
             )
         )
-        human_msg = HumanMessage(content=f"Dokumententext:\n{document.content}")
+        human_msg = HumanMessage(
+            content=f"Extract the data of this document content:\n{document.content}"
+        )
 
         # Strukturierten Output erzwingen und Rohdaten für Token-Tracking anfordern
         structured_llm = self.llm.with_structured_output(

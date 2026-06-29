@@ -17,40 +17,38 @@ def get_document_tools(document_content: str):
     @tool
     def calculate_sum(value1: float, value2: float) -> float:
         """
-        Addiert zwei Zahlenwerte. Nutze dies zwingend, um zu überprüfen,
-        ob Teilbeträge (Sub-Amounts) den Gesamtbetrag (Gross Amount) ergeben.
+        Adds two numerical values together. Mandatory tool to verify
+        whether sub-amounts add up to the total gross amount.
         """
         return value1 + value2
 
     @tool
     def verify_exact_match(extracted_value: str) -> str:
         """
-        Prüft (Faktencheck), ob ein extrahierter Text-Wert EXAKT so im Original-Dokument vorkommt.
-        Nutze dieses Tool, um sicherzustellen, dass du keine Wörter oder Zahlen halluzinierst!
-        Gibt 'True' zurück, wenn der Wert existiert, sonst 'False'.
+        Performs a fact check to verify if an extracted text value exists EXACTLY as specified in the original document.
+        Use this tool to ensure you do not hallucinate words or numbers!
+        Returns 'True' if the value exists, otherwise 'False'.
         """
-        # Ein einfacher, aber harter Substring-Match gegen den echten OCR Text
+        # A simple but strict substring match against the actual OCR text
         if extracted_value.lower() in document_content.lower():
-            return f"True: '{extracted_value}' existiert im Dokument."
+            return f"True: '{extracted_value}' exists in the document."
         else:
-            return f"False: '{extracted_value}' wurde nicht gefunden! Bitte lies den Text nochmal genau."
+            return f"False: '{extracted_value}' was not found! Please re-read the text carefully."
 
     @tool
     def clean_and_format_date(raw_date_string: str) -> str:
         """
-        Nimmt einen unsauberen Datums-String aus dem OCR-Text (z.B. '12/24/19' oder 'Dec 24 2019')
-        und versucht, ihn in ein sauberes, einheitliches Format zu übersetzen.
+        Takes an unformatted or messy date string from the OCR text (e.g., '12/24/19' or 'Dec 24 2019')
+        and attempts to normalize it into a clean, standardized format.
         """
-        # AgenticIE nutzt solche Sanitizer, um die JSON-Qualität zu sichern
+        # AgenticIE utilizes such sanitizers to ensure JSON quality
         import dateutil.parser
 
         try:
             parsed_date = dateutil.parser.parse(raw_date_string)
             return parsed_date.strftime("%Y-%m-%d")
         except Exception:
-            return (
-                "Fehler: Datum konnte nicht geparst werden. Behalte den Originalwert."
-            )
+            return "Error: Date could not be parsed. Retain the original value."
 
     return [calculate_sum, verify_exact_match, clean_and_format_date]
 
@@ -67,14 +65,14 @@ class SingleAgentCondition(BaseCondition):
 
         target_fields_str = ", ".join(document.target_fields)
         system_prompt = (
-            "Du bist ein autonomer Extraktionsagent für Geschäftsdaten.\n"
-            f"Deine Aufgabe ist die Extraktion folgender Pflichtfelder: {target_fields_str}.\n"
-            "Nutze Tools, um Fakten zu prüfen.\n"
-            "WICHTIG: Erfinde keine Werte; übernehme Texte exakt aus dem Dokument.\n"
-            "Feldtypen:\n"
-            "- Alle Felder außer 'line_items': einfacher String (z.B. '476.00' oder 'Friends of Jeff')\n"
-            "- 'line_items': Liste von Strings, ein Eintrag pro Zeile\n"
-            "NIEMALS Dictionaries verwenden."
+            "You are an autonomous business data extraction agent.\n"
+            f"Your task is to extract the following mandatory fields: {target_fields_str}.\n"
+            "Utilize the provided tools to verify facts.\n"
+            "CRITICAL: Do not fabricate values; extract texts exactly as they appear in the document.\n"
+            "Field Types:\n"
+            "  All fields except 'line_items': Simple string (e.g., '476.00' or 'Friends of Jeff')\n"
+            "  'line_items': List of strings, one entry per item line\n"
+            "NEVER use dictionaries."
         )
 
         agent = create_agent(

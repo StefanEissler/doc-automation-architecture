@@ -91,6 +91,9 @@ class VRDUBaseSchema(BaseModel):
             )
 
         for field_name in required_fields:
+            if field_name == "line_items":
+                continue
+
             if field_name in original_top_fields and field_name != "line_items":
                 field_info = original_top_fields[field_name]
                 field_definitions[field_name] = (

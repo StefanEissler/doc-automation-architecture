@@ -133,7 +133,7 @@ class SingleAgentCondition(BaseCondition):
                                     msg, "tool_calls"
                                 ):
                                     for tc in msg.tool_calls:
-                                        if tc["name"] == "ExtractionSchema":
+                                        if tc["name"] == ExtractionSchema.__name__:
                                             extracted_data = tc["args"]
 
             used_tools = list(dict.fromkeys(used_tools))

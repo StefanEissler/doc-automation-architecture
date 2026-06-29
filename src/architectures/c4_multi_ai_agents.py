@@ -256,6 +256,10 @@ class MultiAgentCondition(BaseCondition):
         retries_left = state.get("correction_count", 0) < self.max_retries
 
         if has_errors and retries_left:
+            self.logger.warning(
+                f"Validator lehnte ab wegen: {state.get('validation_errors')}"
+            )
+
             self.logger.info(
                 f"C4: Correction Loop (Retry {state.get('correction_count', 0) + 1}/{self.max_retries})"
             )

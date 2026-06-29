@@ -30,7 +30,12 @@ class SinglePromptCondition(BaseCondition):
                 "Your task is to extract exact values from the provided OCR text according to the required schema.\n"
                 f"These are the target fields to extract: {target_fields_str}.\n"
                 "You MUST extract all tabular rows into the line_items array.\n"
-                "If a value is missing, return null. Do NOT create or hallucinate any data!"
+                "If a value is missing, return null. Do NOT create or hallucinate any data!\n\n"
+                "CRITICAL INSTRUCTIONS FOR JSON VALUES:\n"
+                "1. OUTPUT STRICTLY THE FINAL EXTRACTED VALUE ONLY.\n"
+                "2. NO EXPLANATIONS. NO REASONING. NO CHAIN OF THOUGHT.\n"
+                "3. DO NOT write full sentences inside the fields (e.g., write '$560.00' and NEVER 'The gross amount is $560.00').\n"
+                "4. Be absolutely concise."
             )
         )
         human_msg = HumanMessage(

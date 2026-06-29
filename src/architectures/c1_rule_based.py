@@ -29,7 +29,7 @@ class RuleBasedCondition:
         )
 
     def extract_header(self, text: str) -> Dict[str, str]:
-        """Extrahiert einmalig auftretende Metadaten aus dem gesamten Text."""
+        """Extract metadata from the howl Text."""
         extracted = {}
         for field, pattern in self.header_patterns.items():
             match = re.search(pattern, text, re.IGNORECASE)
@@ -37,7 +37,7 @@ class RuleBasedCondition:
         return extracted
 
     def extract_line_items(self, text: str) -> List[Dict[str, str]]:
-        """Iteriert zeilenweise über den Text, um wiederkehrende Tabellendaten zu finden."""
+        """Iterate the text for recurring table data."""
         line_items = []
         for match in self.line_item_pattern.finditer(text):
             line_items.append(
@@ -52,7 +52,7 @@ class RuleBasedCondition:
         return line_items
 
     def extract_data(self, document: Any) -> Tuple[Dict, Dict, Optional[str]]:
-        """Hauptmethode für die Bedingung C1."""
+        """Main Method for C1"""
         try:
             text = document.content
             extracted_data = self.extract_header(text)

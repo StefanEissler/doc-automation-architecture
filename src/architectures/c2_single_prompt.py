@@ -19,9 +19,7 @@ class SinglePromptCondition(BaseCondition):
         self.logger.debug(document.schema_class)
 
         if not ExtractionSchema:
-            self.logger.error(
-                f"Doc {document.id} hat kein valides Schema. Überspringen."
-            )
+            self.logger.error(f"Doc {document.id} has no valid Schema.")
             return {}, {}, "No schema available"
 
         target_fields_str = ", ".join(document.target_fields)
@@ -49,7 +47,7 @@ class SinglePromptCondition(BaseCondition):
         extracted_data = {}
         error_msg = None
 
-        self.logger.info(f"C2: Starte Single Prompt Extraktion für {document.id}")
+        self.logger.info(f"C2: Starting Single Prompt Extraction for {document.id}")
 
         try:
             response = structured_llm.invoke([system_msg, human_msg])

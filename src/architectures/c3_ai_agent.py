@@ -1,11 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from langchain.messages import AIMessage, HumanMessage
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain.chat_models import BaseChatModel
-from pydantic import Field, create_model
 
 from src.architectures.base import BaseCondition
 from src.data_loader import Document

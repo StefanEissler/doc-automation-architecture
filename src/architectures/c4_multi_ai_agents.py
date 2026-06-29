@@ -73,14 +73,27 @@ class MultiAgentCondition(BaseCondition):
         prompt = [
             SystemMessage(
                 content=(
-                    f"You are a Planner Agent.\n"
-                    f"Target Fields: {', '.join(state['target_fields'])}\n"
-                    "Analyze document structure and create extraction strategy.\n"
-                    "DO NOT EXTRACT DATA YOURSELF!\n"
-                    "Identify where each field likely appears in the text."
+                    "You are a Planner Agent for broadcast advertising document extraction.\n"
+                    "Your ONLY job is to analyze the document structure and write a strategy "
+                    "for the Extractor Agent. DO NOT extract any values yourself.\n\n"
+                    f"The Extractor must find these fields: {', '.join(state.get('target_fields'))}\n\n"
+                    "YOUR TASKS:\n"
+                    "1. Identify where in the document each field appears "
+                    "   (e.g., 'gross_amount is in the bottom summary table under Gross Total').\n"
+                    "2. Flag disambiguation risks:\n"
+                    "   - tv_address (station address) vs agency address (different entities)\n"
+                    "   - contract_num may appear with prefixes like 'Contract #' — strip them\n"
+                    "   - advertiser/agency IDs appear in parentheses and must be included\n"
+                    "3. Note any OCR artifacts or unusual formatting the Extractor should handle.\n\n"
+                    "Write a numbered, field-by-field strategy the Extractor can follow directly."
                 )
             ),
-            HumanMessage(content=state["document_content"]),
+            HumanMessage(
+                content=(
+                    f"<DOCUMENT>\n{state['document_content']}\n</DOCUMENT>\n\n"
+                    f"Write the extraction strategy for: {', '.join(state.get('target_fields'))}"
+                )
+            ),
         ]
 
         # Use structured output to guarantee valid JSON response
@@ -142,12 +155,26 @@ class MultiAgentCondition(BaseCondition):
         strategy = state.get("planner_strategy", "")
         feedback = state.get("validation_errors", "")
 
+        feedback_block = (
+            (
+                f"\n<CORRECTION_REQUIRED>\n"
+                f"Your previous extraction had errors. Fix ALL of these:\n{feedback}\n"
+                f"</CORRECTION_REQUIRED>\n"
+            )
+            if feedback
+            else ""
+        )
+
         system_prompt = (
-            "You are an extraction agent. Extract data according to these fields:\n"
-            f"{', '.join(state['target_fields'])}\n\n"
-            f"Strategy from Planner: {strategy}\n\n"
-            f"{'<PREVIOUS FEEDBACK>' + feedback + '</PREVIOUS FEEDBACK>' if feedback else ''}\n\n"
-            "Return ONLY JSON matching the schema keys. No markdown, no extra text."
+            "You are a precise data extraction agent for broadcast advertising documents.\n\n"
+            f"Extract ONLY these fields: {', '.join(state['target_fields'])}\n\n"
+            f"PLANNER STRATEGY:\n{strategy}\n\n"
+            f"{feedback_block}"
+            "GENERAL RULES:\n"
+            "- Copy values EXACTLY as they appear in the document — no paraphrasing.\n"
+            "- Scalar fields must be plain strings, never dicts or nested objects.\n"
+            "- Set a field to null ONLY if the value is genuinely absent from the document.\n"
+            "- line_items: list of objects, one entry per broadcast line."
         )
 
         prompt = [
@@ -196,20 +223,40 @@ class MultiAgentCondition(BaseCondition):
         self.logger.info("C4: Validating extraction quality...")
 
         data = state.get("raw_extraction", {})
-        doc_preview = state["document_content"]
+
+        scalar_fields = [f for f in state.get("target_fields")]
+        extracted_subset = {k: v for k, v in data.items() if k in scalar_fields}
 
         prompt = [
             SystemMessage(
                 content=(
-                    "You are a validator. Check extraction quality strictly.\n"
-                    "Check: 1) Hallucinations? (Values not in document)\n"
-                    "       2) Missing fields? (Fields that should exist but are null)\n"
-                    "If data matches document → PASSED\n"
-                    "If errors exist → FAILED with specific feedback"
+                    "You are a strict fact-checker for document extraction.\n\n"
+                    "YOUR SCOPE — check ONLY these fields:\n"
+                    f"{', '.join(scalar_fields)}\n\n"
+                    "CRITICAL RULES:\n"
+                    "1. DO NOT mention, require, or check any field not listed above.\n"
+                    "   Fields like 'invoice_date', 'salesperson', 'net_total', 'payment_terms',\n"
+                    "   'commission_rate', 'agency_ref' are OUT OF SCOPE — ignore them entirely.\n"
+                    "2. HALLUCINATION: extracted value cannot be found anywhere in the document text.\n"
+                    "3. MISSING: field is in scope AND a clear value exists in the document\n"
+                    "   but was extracted as null.\n"
+                    "4. NULL IS CORRECT if the value genuinely does not appear in the document.\n"
+                    "5. MINOR FORMAT DIFFERENCES are acceptable — flag only factual errors.\n"
+                    "   Example: 'KMEG' vs 'KMEG KMEG' is a format issue, not a hallucination.\n"
+                    "6. PASSED = no confirmed hallucinations AND no clearly missing in-scope fields.\n"
+                    "7. FAILED = at least one confirmed hallucination OR one clearly missing field.\n\n"
+                    "Be conservative: only FAIL if you are certain of an error."
                 )
             ),
             HumanMessage(
-                content=f"Document Preview:\n{doc_preview}...\n\nExtracted Data:\n{json.dumps(data, indent=2)}"
+                content=(
+                    f"<DOCUMENT>\n{state['document_content']}\n</DOCUMENT>\n\n"
+                    f"<EXTRACTED_FIELDS>\n"
+                    f"{json.dumps(extracted_subset, indent=2)}\n"
+                    f"</EXTRACTED_FIELDS>\n\n"
+                    "For each extracted field: verify the value appears in the document. "
+                    "Report ONLY errors in the fields listed in YOUR SCOPE."
+                )
             ),
         ]
 

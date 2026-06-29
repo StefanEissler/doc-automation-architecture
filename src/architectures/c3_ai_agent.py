@@ -86,16 +86,17 @@ class SingleAgentCondition(BaseCondition):
         )
 
         task_prompt = (
-            f"### New Documents ###\n\n"
-            f"(<Document>)\n"
+            "### NEW EXTRACTION TASK ###\n\n"
+            "<Document_Content>\n"
             f"{document.content}\n"
-            f"(</Document>)\n\n"
-            f"(<Task>)\n"
-            f"Extrahiere die geforderten Werte aus dem Dokument. Achte extrem genau auf den Kontext, um Halluzinationen zu vermeiden. "
-            f"Werte müssen exakt aus dem Text übernommen werden.\n"
-            f"Ziel-Schema:\n{target_fields_str}\n"
-            f"(</Task>)\n\n"
-            f"Gebe als Antwort ausschließlich das Pydantic-Objekt im geforderten Schema zurück."
+            "</Document_Content>\n\n"
+            "<Task_Requirements>\n"
+            f"Extract the following fields: {target_fields_str}.\n"
+            "1. Analyze the document context carefully to avoid hallucinations.\n"
+            "2. If a field value is not explicitly present, return 'null'.\n"
+            "3. Use the required tools for fact-checking before submitting your final structured answer.\n"
+            "</Task_Requirements>\n\n"
+            "Execute the steps and submit the structured extraction now. ONLY ANSWER WITH THE STRUCTURED OUTPUT"
         )
 
         self.logger.info(f"C3 Starte Single Agent für Dokument {document.id}")
@@ -105,40 +106,30 @@ class SingleAgentCondition(BaseCondition):
         extracted_data = {}
 
         try:
-            for chunk in agent.stream(
-                {"messages": [HumanMessage(content=task_prompt)]},
-                stream_mode="updates",
-                version="v2",
-            ):
-                self.logger.debug(f"STREAM CHUNK: {chunk}")
-                if chunk["type"] == "updates":
-                    for node_name, node_output in chunk["data"].items():
-                        if node_name == "tools":
-                            for msg in node_output.get("messages", []):
-                                used_tools.append(msg.name)
-                                self.logger.info(
-                                    f"Tool {msg.name} wurde erfolgreich ausgeführt."
-                                )
+            result = agent.invoke({"messages": [HumanMessage(content=task_prompt)]})
 
-                        if "messages" in node_output:
-                            for msg in node_output["messages"]:
+            structured = result.get("structured_response")
+            self.logger.debug(structured)
+            if structured:
+                try:
+                    extracted_data = structured.model_dump()
+                except AttributeError:
+                    extracted_data = structured.dict()
 
-                                # Token Tracking
-                                if isinstance(msg, AIMessage):
-                                    usage = getattr(msg, "usage_metadata", None)
-                                    if not usage and isinstance(msg, dict):
-                                        usage = msg.get("usage_metadata")
-                                    if usage:
-                                        input_tokens += usage.get("input_tokens", 0)
-                                        output_tokens += usage.get("output_tokens", 0)
-
-                                # Daten Extraktion
-                                if isinstance(msg, AIMessage) and hasattr(
-                                    msg, "tool_calls"
-                                ):
-                                    for tc in msg.tool_calls:
-                                        if tc["name"] == ExtractionSchema.__name__:
-                                            extracted_data = tc["args"]
+            # Token-Tracking and Tool-Tracking from Message-History
+            for msg in result.get("messages", []):
+                if isinstance(msg, AIMessage):
+                    usage = getattr(msg, "usage_metadata", None) or {}
+                    input_tokens += usage.get("input_tokens", 0)
+                    output_tokens += usage.get("output_tokens", 0)
+                    for tc in getattr(msg, "tool_calls", []):
+                        name = (
+                            tc.get("name")
+                            if isinstance(tc, dict)
+                            else getattr(tc, "name", None)
+                        )
+                        if name and name != ExtractionSchema.__name__:
+                            used_tools.append(name)
 
             used_tools = list(dict.fromkeys(used_tools))
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Klone VRDU Dataset..."
+echo "Clone VRDU Dataset..."
 
 TARGET_DIR="data/raw/vrdu"
 REPO_URL="https://github.com/google-research-datasets/vrdu.git"
@@ -25,7 +25,7 @@ if [ ! -d "$TARGET_DIR" ]; then
   
   cd ../../..
 else
-  echo "VRDU bereits vorhanden."
+  echo "VRDU already exists."
 fi
 
-echo "VRDU Dataset herunterladen"
+echo "VRDU Dataset downloaded"

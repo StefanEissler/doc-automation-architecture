@@ -60,7 +60,7 @@ class SinglePromptCondition(BaseCondition):
             if parsed_data:
                 extracted_data = parsed_data.dict()
             else:
-                error_msg = "LLM hat kein valides Schema zurückgegeben."
+                error_msg = "LLM has no returned a valid Schema."
 
             if (
                 raw_message

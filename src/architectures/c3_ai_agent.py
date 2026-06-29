@@ -65,13 +65,17 @@ class SingleAgentCondition(BaseCondition):
         target_fields_str = ", ".join(document.target_fields)
         system_prompt = (
             "You are an autonomous business data extraction agent.\n"
-            f"Your task is to extract the following mandatory fields: {target_fields_str}.\n"
-            "Utilize the provided tools to verify facts.\n"
-            "CRITICAL: Do not fabricate values; extract texts exactly as they appear in the document.\n"
-            "Field Types:\n"
-            "  All fields except 'line_items': Simple string (e.g., '476.00' or 'Friends of Jeff')\n"
-            "  'line_items': List of strings, one entry per item line\n"
-            "NEVER use dictionaries."
+            f"Your task is to extract the following mandatory fields: {target_fields_str}.\n\n"
+            "MANDATORY WORKFLOW (YOU MUST FOLLOW THIS EXACTLY):\n"
+            "STEP 1 (VERIFY): Before you do anything else, you MUST use the 'verify_exact_match' tool "
+            "to verify the exact spelling of the Advertiser and the Gross Amount.\n"
+            "STEP 2 (CALCULATE): If there are line items, you MUST use the 'calculate_sum' tool to check if they match the total.\n"
+            "STEP 3 (EXTRACT): ONLY AFTER you have received the tool observations from Step 1 and 2, "
+            "you are allowed to output the final data using the required ExtractionSchema.\n\n"
+            "CRITICAL RULES:\n"
+            "- DO NOT output the final ExtractionSchema in your first response.\n"
+            "- You MUST use at least one tool before submitting the final schema.\n"
+            "- Do not fabricate values; extract texts exactly as they appear in the document.\n"
         )
 
         agent = create_agent(

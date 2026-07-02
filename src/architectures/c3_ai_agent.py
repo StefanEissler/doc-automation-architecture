@@ -177,8 +177,8 @@ class SingleAgentCondition(BaseCondition):
         except Exception as e:
             self.logger.error(f"C3 Error: {e}")
             safe_metadata = {
-                "agent_input_tokens": input_tokens,
-                "agent_output_tokens": output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
                 "used_tools": used_tools,
                 "extraction_retry": extraction_retry,

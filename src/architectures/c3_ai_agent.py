@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 from typing import Dict, Optional, Tuple
 
 from langchain.messages import AIMessage, HumanMessage
@@ -109,6 +111,7 @@ class SingleAgentCondition(BaseCondition):
         input_tokens, output_tokens = 0, 0
         used_tools = []
         extracted_data = {}
+        extraction_retry = None
 
         try:
             result = agent.invoke({"messages": [HumanMessage(content=task_prompt)]})
@@ -118,11 +121,27 @@ class SingleAgentCondition(BaseCondition):
             if last_content:
                 parser = JsonOutputParser()
                 try:
+                    # Versuch 1: Standard-Parser
                     extracted_data = parser.invoke(last_content)
                 except Exception as parse_e:
-                    self.logger.error(
-                        f"C3: Schema-Validation failed! Wrong Output-Format: {parse_e}"
+                    self.logger.warning(
+                        "C3: Standard-Parser failed, trying Regex-Fallback."
                     )
+                    try:
+                        # Try with regex fallback to extract JSON block
+                        match = re.search(r"\{.*\}", last_content, re.DOTALL)
+                        if match:
+                            extraction_retry = 1
+                            json_str = match.group(0)
+                            extracted_data = json.loads(json_str)
+                            self.logger.info("C3: Regex-Fallback erfolgreich.")
+                        else:
+                            raise ValueError("Kein JSON-Block in der Antwort gefunden.")
+                    except Exception as regex_e:
+                        self.logger.error(
+                            f"C3: Schema-Validation final failed! Parser: {parse_e}, Regex: {regex_e}. Content was: {last_content[:100]}..."
+                        )
+                        extracted_data = {}
 
             # Token-Tracking and Tool-Tracking from Message-History
             for msg in result.get("messages", []):
@@ -162,6 +181,7 @@ class SingleAgentCondition(BaseCondition):
                 "agent_output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
                 "used_tools": used_tools,
+                "extraction_retry": extraction_retry,
             }
 
             return {}, safe_metadata, str(e)

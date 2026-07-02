@@ -150,7 +150,7 @@ def run_experiment():
             "seed": 48,
             "top_k": 5,
             "top_p": 0.1,
-            "num_ctx": 16384,
+            "num_ctx": 12288,
         }
         llm_text = get_llm(args.provider, args.model, base_llm_params)
 

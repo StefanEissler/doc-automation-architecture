@@ -41,10 +41,13 @@ class DataLoader:
             )
 
     def load_docs(
-        self, complexity: str = "all", limit: Optional[int] = None
+        self, complexity: list | str = "all", limit: Optional[int] = None
     ) -> List[Document]:
-        documents = []
 
+        if isinstance(complexity, str):
+            complexity = [complexity]
+
+        documents = []
         with open(self.corpus_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -54,7 +57,7 @@ class DataLoader:
                 doc_complexity = item.get("complexity", "L1")
                 doc_id = item.get("id")
 
-                if complexity != "all" and doc_complexity != complexity:
+                if "all" not in complexity and doc_complexity not in complexity:
                     continue
 
                 ground_truth = item.get("ground_truth", {})

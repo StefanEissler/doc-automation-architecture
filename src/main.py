@@ -73,7 +73,7 @@ def get_llm(provider: str, model: str, ollama_model_parameters: dict):
         logging.info("Loading Ollama LLM")
         download_ollama_model(model)
         # Temperatur auf 0.0 für deterministische Antworten setzen
-        return ChatOllama(**ollama_model_parameters)
+        return ChatOllama(**ollama_model_parameters, timeout=300)
     else:
         raise ValueError(f"Provider {provider} nicht unterstützt.")
 

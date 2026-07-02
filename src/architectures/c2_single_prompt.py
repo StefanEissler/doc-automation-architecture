@@ -39,7 +39,12 @@ class SinglePromptCondition(BaseCondition):
             )
         )
         human_msg = HumanMessage(
-            content=f"Extract the data of this document content:\n{document.content}"
+            content=(
+                "Extract the data of this document content:\n"
+                "<DOCUMENT>\n"
+                f"{document.content}\n"
+                "</DOCUMENT>\n\n"
+            )
         )
 
         # Strukturierten Output erzwingen und Rohdaten für Token-Tracking anfordern

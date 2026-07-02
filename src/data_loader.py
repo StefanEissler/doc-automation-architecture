@@ -31,7 +31,6 @@ class DataLoader:
         self.experiment = experiment
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        # Leite den Dateinamen aus dem Experiment-Parameter ab
         self.corpus_file = (
             self.data_dir / f"corpus_experiment_{self.experiment}_internal.jsonl"
         )
@@ -74,9 +73,7 @@ class DataLoader:
                 try:
                     schema = base_schema.filter_schema(target_fields)
                 except ValueError as e:
-                    self.logger.log(f"WARNUNG bei Doc {item.get("id")}: {e}")
-                    # Fallback: Nur die Felder, die sicher da sind, oder leeres Schema
-                    # Besser: Crash vermeiden, leere Liste oder Basis-Filterung
+                    self.logger.log(f"Warning for Document: {item.get('id')}: {e}")
                     common_fields = [
                         f for f in target_fields if f in VRDUBaseSchema.model_fields
                     ]

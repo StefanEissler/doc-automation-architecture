@@ -136,7 +136,11 @@ def run_experiment():
         setup_logging(args.log)
         logging.info("Starting Document Automation Benchmark Experiment")
 
-        evaluator = BenchmarkEvaluator(results_dir=str(PROJECT_ROOT / "results"))
+        evaluator = BenchmarkEvaluator(
+            results_dir=str(PROJECT_ROOT / "results"),
+            experiment=args.experiment,
+            complexity=args.complexity,
+        )
         data_dir_path = str(PROJECT_ROOT / "data" / "processed")
         loader = DataLoader(data_dir=data_dir_path, experiment=args.experiment)
 
@@ -211,7 +215,7 @@ def run_experiment():
                     error=error_msg,
                 )
 
-        evaluator.save_to_csv(args.experiment, args.complexity)
+        logging.info("Experiment completed successfully.")
 
     except Exception as e:
         logging.error(f"Experiment execution failed: {e}")

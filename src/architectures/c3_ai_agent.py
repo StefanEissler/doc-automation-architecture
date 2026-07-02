@@ -5,6 +5,9 @@ from langchain.messages import AIMessage, HumanMessage
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain.chat_models import BaseChatModel
+from langchain_core.output_parsers import (
+    JsonOutputParser,
+)
 
 from src.architectures.base import BaseCondition
 from src.data_loader import Document
@@ -66,7 +69,7 @@ class SingleAgentCondition(BaseCondition):
         system_prompt = (
             "You are an autonomous business data extraction agent.\n"
             f"Your task is to extract the following mandatory fields: {target_fields_str}.\n\n"
-            "MANDATORY WORKFLOW (YOU MUST FOLLOW THIS EXACTLY):\n"
+            "MANDATORY STEPS (YOU MUST FOLLOW THIS EXACTLY):\n"
             "STEP 1 (VERIFY): Before you do anything else, you MUST use the 'verify_exact_match' tool "
             "to verify the exact spelling of the Advertiser and the Gross Amount.\n"
             "STEP 2 (CALCULATE): If there are line items, you MUST use the 'calculate_sum' tool to check if they match the total.\n"
@@ -76,6 +79,8 @@ class SingleAgentCondition(BaseCondition):
             "- DO NOT output the final ExtractionSchema in your first response.\n"
             "- You MUST use at least one tool before submitting the final schema.\n"
             "- Do not fabricate values; extract texts exactly as they appear in the document.\n"
+            "- ALL field values must match the schema types exactly. NEVER invent nested dicts for plain string fields.\n"
+            "- DO NOT use markdown, backticks, or code blocks in your final output.\n"
         )
 
         agent = create_agent(
@@ -87,15 +92,15 @@ class SingleAgentCondition(BaseCondition):
 
         task_prompt = (
             "### NEW EXTRACTION TASK ###\n\n"
-            "<Document_Content>\n"
+            "<DOCUMENT>\n"
             f"{document.content}\n"
-            "</Document_Content>\n\n"
-            "<Task_Requirements>\n"
+            "</DOCUMENT>\n\n"
+            "<TASK_REQUIREMENTS>\n"
             f"Extract the following fields: {target_fields_str}.\n"
             "1. Analyze the document context carefully to avoid hallucinations.\n"
             "2. If a field value is not explicitly present, return 'null'.\n"
             "3. Use the required tools for fact-checking before submitting your final structured answer.\n"
-            "</Task_Requirements>\n\n"
+            "</TASK_REQUIREMENTS>\n\n"
             "Execute the steps and submit the structured extraction now. ONLY ANSWER WITH THE STRUCTURED OUTPUT"
         )
 
@@ -107,14 +112,17 @@ class SingleAgentCondition(BaseCondition):
 
         try:
             result = agent.invoke({"messages": [HumanMessage(content=task_prompt)]})
+            self.logger.debug(result)
 
-            structured = result.get("structured_response")
-            self.logger.debug(structured)
-            if structured:
+            last_content = result["messages"][-1].content if result["messages"] else ""
+            if last_content:
+                parser = JsonOutputParser()
                 try:
-                    extracted_data = structured.model_dump()
-                except AttributeError:
-                    extracted_data = structured.dict()
+                    extracted_data = parser.invoke(last_content)
+                except Exception as parse_e:
+                    self.logger.error(
+                        f"C3: Schema-Validation failed! Wrong Output-Format: {parse_e}"
+                    )
 
             # Token-Tracking and Tool-Tracking from Message-History
             for msg in result.get("messages", []):

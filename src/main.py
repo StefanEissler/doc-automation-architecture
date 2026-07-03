@@ -151,6 +151,7 @@ def run_experiment():
             "top_k": 5,
             "top_p": 0.1,
             "num_ctx": 12288,
+            "num_predict": 1500,
         }
         llm_text = get_llm(args.provider, args.model, base_llm_params)
 

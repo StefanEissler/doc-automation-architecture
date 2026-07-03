@@ -83,6 +83,8 @@ class SingleAgentCondition(BaseCondition):
             "- Do not fabricate values; extract texts exactly as they appear in the document.\n"
             "- ALL field values must match the schema types exactly. NEVER invent nested dicts for plain string fields.\n"
             "- DO NOT use markdown, backticks, or code blocks in your final output.\n"
+            "- OUTPUT STRICTLY VALID JSON ONLY in your final response.\n"
+            "- DO NOT ADD ANY CONVERSATIONAL TEXT, PREAMBLES, OR EXPLANATIONS BEFORE OR AFTER THE JSON.\n"
         )
 
         agent = create_agent(
@@ -103,7 +105,7 @@ class SingleAgentCondition(BaseCondition):
             "2. If a field value is not explicitly present, return 'null'.\n"
             "3. Use the required tools for fact-checking before submitting your final structured answer.\n"
             "</TASK_REQUIREMENTS>\n\n"
-            "Execute the steps and submit the structured extraction now. ONLY ANSWER WITH THE STRUCTURED OUTPUT"
+            "Execute the steps now. Your very last message in this conversation MUST be ONLY the raw, valid JSON object matching the ExtractionSchema. No other text."
         )
 
         self.logger.info(f"C3 Starte Single Agent für Dokument {document.id}")

@@ -26,7 +26,7 @@ class SinglePromptCondition(BaseCondition):
 
         system_msg = SystemMessage(
             content=(
-                "You are an expert data extraction assistant specialized in B2B ad-buy forms and invoices.\n"
+                "You are an expert data extraction assistant specialized in B2B forms and invoices.\n"
                 "Your task is to extract exact values from the provided OCR text according to the required schema.\n"
                 f"These are the target fields to extract: {target_fields_str}.\n"
                 "You MUST extract all tabular rows into the line_items array.\n"

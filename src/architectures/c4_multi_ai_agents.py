@@ -82,8 +82,8 @@ class MultiAgentCondition(BaseCondition):
                     "   (e.g., 'gross_amount is in the bottom summary table under Gross Total').\n"
                     "2. Flag disambiguation risks:\n"
                     "   - tv_address (station address) vs agency address (different entities)\n"
-                    "   - contract_num may appear with prefixes like 'Contract #' — strip them\n"
-                    "   - advertiser/agency IDs appear in parentheses and must be included\n"
+                    "   - identifier numbers may appear with prefixes like 'Contract #' — strip them\n"
+                    "   - IDs appear in parentheses and must be included\n"
                     "3. Note any OCR artifacts or unusual formatting the Extractor should handle.\n\n"
                     "Write a numbered, field-by-field strategy the Extractor can follow directly."
                 )
@@ -166,7 +166,7 @@ class MultiAgentCondition(BaseCondition):
         )
 
         system_prompt = (
-            "You are a precise data extraction agent for broadcast advertising documents.\n\n"
+            "You are a precise data extraction agent for business documents.\n\n"
             f"Extract ONLY these fields: {', '.join(state['target_fields'])}\n\n"
             f"PLANNER STRATEGY:\n{strategy}\n\n"
             f"{feedback_block}"
@@ -235,8 +235,7 @@ class MultiAgentCondition(BaseCondition):
                     f"{', '.join(scalar_fields)}\n\n"
                     "CRITICAL RULES:\n"
                     "1. DO NOT mention, require, or check any field not listed above.\n"
-                    "   Fields like 'invoice_date', 'salesperson', 'net_total', 'payment_terms',\n"
-                    "   'commission_rate', 'agency_ref' are OUT OF SCOPE — ignore them entirely.\n"
+                    "   Do not create your own fields and stick to the ones given in this prompt.\n"
                     "2. HALLUCINATION: extracted value cannot be found anywhere in the document text.\n"
                     "3. MISSING: field is in scope AND a clear value exists in the document\n"
                     "   but was extracted as null.\n"

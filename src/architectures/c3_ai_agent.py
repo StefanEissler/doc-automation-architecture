@@ -78,8 +78,8 @@ class SingleAgentCondition(BaseCondition):
             "STEP 3 (EXTRACT): ONLY AFTER you have received the tool observations from Step 1 and 2, "
             "you are allowed to output the final data using the required ExtractionSchema.\n\n"
             "CRITICAL RULES:\n"
-            "- DO NOT output the final ExtractionSchema in your first response.\n"
             "- You MUST use at least one tool before submitting the final schema.\n"
+            "- You MUST output the final ExtractionSchema in your last response.\n"
             "- Do not fabricate values; extract texts exactly as they appear in the document.\n"
             "- ALL field values must match the schema types exactly. NEVER invent nested dicts for plain string fields.\n"
             "- DO NOT use markdown, backticks, or code blocks in your final output.\n"
@@ -105,7 +105,7 @@ class SingleAgentCondition(BaseCondition):
             "2. If a field value is not explicitly present, return 'null'.\n"
             "3. Use the required tools for fact-checking before submitting your final structured answer.\n"
             "</TASK_REQUIREMENTS>\n\n"
-            "Execute the steps now. Your very last message in this conversation MUST be ONLY the raw, valid JSON object matching the ExtractionSchema. No other text."
+            "Execute the steps now. Your last output message MUST be ONLY the raw, **valid JSON** object matching the ExtractionSchema. No other text."
         )
 
         self.logger.info(f"C3 Starte Single Agent für Dokument {document.id}")
@@ -123,7 +123,7 @@ class SingleAgentCondition(BaseCondition):
             if last_content:
                 parser = JsonOutputParser()
                 try:
-                    # Versuch 1: Standard-Parser
+                    # Standard-Parser to validate and parse the JSON output
                     extracted_data = parser.invoke(last_content)
                 except Exception as parse_e:
                     self.logger.warning(

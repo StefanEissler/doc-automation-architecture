@@ -1,9 +1,11 @@
+import os
 from pathlib import Path
 import argparse
 import logging
 import subprocess
 from time import perf_counter
 
+from langchain_google_genai import ChatGoogleGenerativeAI
 import requests
 
 from langchain_ollama import ChatOllama
@@ -65,15 +67,23 @@ def download_ollama_model(model_name: str):
         raise
 
 
-def get_llm(provider: str, model: str, ollama_model_parameters: dict):
-    # Nicht mehr möglich, da in den Klassen, die llm types verwendet werden...
-    # if provider == "vertex":
-    #     return ChatVertexAI(model_name="gemini-3-pro", temperature=0)
+def get_llm(provider: str, model: str, model_parameters: dict):
+
+    if provider == "google":
+        logging.info(f"Loading Google Gemini API LLM: {model}")
+        if not os.environ.get("GOOGLE_API_KEY"):  # noqa: F821
+            raise ValueError("GOOGLE_API_KEY environment variable is missing!")
+
+        # from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=model,
+            temperature=0.0,
+            max_output_tokens=model_parameters.get("num_predict", 1500),
+        )
     if provider == "ollama":
         logging.info("Loading Ollama LLM")
         download_ollama_model(model)
-        # Temperatur auf 0.0 für deterministische Antworten setzen
-        return ChatOllama(**ollama_model_parameters, client_kwargs={"timeout": 180.0})
+        return ChatOllama(**model_parameters, client_kwargs={"timeout": 300.0})
     else:
         raise ValueError(f"Provider {provider} nicht unterstützt.")
 

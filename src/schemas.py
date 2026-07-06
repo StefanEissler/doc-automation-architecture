@@ -68,43 +68,61 @@ class VRDUBaseSchema(BaseModel):
     )
 
     @classmethod
-    def filter_schema(cls, required_fields: list[str]):
+    def filter_schema(cls, required_fields):
+        """
+        required_fields: Dict from JSONL,
+        z.B. {"property": "string", ..., "line_items": [{"channel": "string", ...}]}
+        """
         original_top_fields = cls.model_fields
         original_sub_fields = VRDULineItem.model_fields
-
         field_definitions = {}
 
-        line_item_targets = [f for f in required_fields if f in original_sub_fields]
+        line_item_subfields = None
+        top_level_names = []
 
-        if line_item_targets:
+        # Sub-Felder für line_items aus der verschachtelten Struktur lesen
+        if isinstance(required_fields, dict):
+            li_spec = required_fields.get("line_items")
+            if isinstance(li_spec, list) and li_spec and isinstance(li_spec[0], dict):
+                line_item_subfields = list(li_spec[0].keys())
+            top_level_names = list(required_fields.keys())
+        else:
+            # Fallback, falls doch eine Liste reinkommt
+            top_level_names = list(required_fields)
+            line_item_subfields = [
+                f for f in top_level_names if f in original_sub_fields
+            ]
+
+        if line_item_subfields:
             sub_field_defs = {}
-            for sub_field in line_item_targets:
-                field_info = original_sub_fields[sub_field]
-                sub_field_defs[sub_field] = (field_info.annotation, field_info.default)
+            for sub_field in line_item_subfields:
+                if sub_field in original_sub_fields:
+                    field_info = original_sub_fields[sub_field]
+                    sub_field_defs[sub_field] = (
+                        field_info.annotation,
+                        field_info.default,
+                    )
 
-            DynamicLineItem = create_model("DynamicLineItem", **sub_field_defs)
-            field_definitions["line_items"] = (
-                Optional[List[DynamicLineItem]],
-                Field(
-                    description="List of all tabular rows. You must populate this array."
-                ),
-            )
+            if sub_field_defs:
+                DynamicLineItem = create_model("DynamicLineItem", **sub_field_defs)
+                field_definitions["line_items"] = (
+                    Optional[List[DynamicLineItem]],
+                    Field(
+                        default_factory=list, description="List of all tabular rows."
+                    ),
+                )
 
-        for field_name in required_fields:
+        for field_name in top_level_names:
             if field_name == "line_items":
                 continue
-
-            if field_name in original_top_fields and field_name != "line_items":
+            if field_name in original_top_fields:
                 field_info = original_top_fields[field_name]
                 field_definitions[field_name] = (
                     field_info.annotation,
                     field_info.default,
                 )
-                logger.debug(f"Field '{field_name}' included in dynamic schema.")
-            elif field_name not in original_sub_fields:
-                logger.warning(f"Field '{field_name}' not found. Skipping.")
 
-        dynamic_name = f"Dynamic{cls.__name__}_{abs(hash(tuple(required_fields)))}"
+        dynamic_name = f"Dynamic_{cls.__name__}_{abs(hash(str(top_level_names)))}"
         return create_model(dynamic_name, __base__=BaseModel, **field_definitions)
 
 

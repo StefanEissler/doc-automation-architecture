@@ -176,7 +176,7 @@ uv run python -m main [OPTIONS]
 | `--condition` | `all`, `C1`, `C2`, `C3`, `C4` | `all` | Selects a single condition or executes the complete architectural comparison. |
 | `--complexity` | `all`, `L1`, `L2`, `L3` | `all` | Filters the corpus to a specific complexity level. |
 | `--limit` | `int` | `None` | Limits the number of loaded documents (e.g., for pilot runs). |
-| `--provider` | `openai`, `ollama` | `ollama` | LLM provider. ⚠️ *Only Ollama is currently implemented.* |
+| `--provider` | `google`, `ollama` | `ollama` | LLM provider. *Only Ollama is currently tested.* |
 | `--model` | `str` | `llama3.3` | Specific model name for the selected provider (e.g., `llama3.3`, `gpt-4o-mini`, `gpt-4o`). |
 | `--log` | `str` | `INFO` | Configuration of the logger (set to `DEBUG` for verbose output or `INFO` as default). |
 

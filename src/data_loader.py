@@ -1,4 +1,3 @@
-from curses import meta
 import json
 import logging
 from pathlib import Path
@@ -17,7 +16,7 @@ class Document:
     id: str
     content: str
     complexity: str
-    target_fields: List[str]
+    target_fields: List[str]  # Bleibt eine Liste für die Prompts
     ground_truth: Dict
     schema_class: Optional[Type[BaseModel]] = None
     metadata: Optional[Dict] = field(default_factory=dict)
@@ -61,10 +60,10 @@ class DataLoader:
                     continue
 
                 ground_truth = item.get("ground_truth", {})
-                target_fields = item.get("target_fields", [])
 
+                # Das rohe Dict aus dem JSON! WICHTIG: Nicht sofort in list() casten!
+                target_fields_raw = item.get("target_fields", {})
                 source: str = item.get("source", "")
-                schema = None
 
                 if source.startswith("VRDU"):
                     base_schema = VRDUBaseSchema
@@ -73,27 +72,39 @@ class DataLoader:
                 else:
                     base_schema = VRDUBaseSchema
 
+                schema = None
                 try:
-                    schema = base_schema.filter_schema(target_fields)
+                    schema = base_schema.filter_schema(target_fields_raw)
                 except ValueError as e:
-                    self.logger.log(f"Warning for Document: {item.get('id')}: {e}")
+                    self.logger.warning(f"Warning for Document: {doc_id}: {e}")
+                    # Fallback
                     common_fields = [
-                        f for f in target_fields if f in VRDUBaseSchema.model_fields
+                        f for f in target_fields_raw if f in base_schema.model_fields
                     ]
                     schema = (
-                        VRDUBaseSchema.filter_schema(common_fields)
+                        base_schema.filter_schema(common_fields)
                         if common_fields
                         else None
                     )
+
+                self._log_schema_details(doc_id, target_fields_raw, schema)
+
+                target_fields_flat = (
+                    list(target_fields_raw.keys())
+                    if isinstance(target_fields_raw, dict)
+                    else target_fields_raw
+                )
 
                 doc = Document(
                     id=doc_id,
                     complexity=doc_complexity,
                     content=item.get("content", ""),
-                    target_fields=target_fields,
+                    target_fields=target_fields_flat,
                     ground_truth=ground_truth,
                     pdf_path=item.get("pdf_path", ""),
                     schema_class=schema,
+                    source=source,
+                    metadata=item.get("metadata", {}),
                 )
                 documents.append(doc)
 

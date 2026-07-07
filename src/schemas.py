@@ -58,7 +58,7 @@ class VRDUBaseSchema(BaseModel):
         None, description="Product number or Product Description (GeneralStringMatch)"
     )
     gross_amount: Optional[str] = Field(
-        None, description="Gross Total Amount (PriceMatch)"
+        None, description="Gross Total Amount with only two decimal places (PriceMatch)"
     )
 
     # Tabular Data

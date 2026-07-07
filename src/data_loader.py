@@ -61,7 +61,6 @@ class DataLoader:
 
                 ground_truth = item.get("ground_truth", {})
 
-                # Das rohe Dict aus dem JSON! WICHTIG: Nicht sofort in list() casten!
                 target_fields_raw = item.get("target_fields", {})
                 source: str = item.get("source", "")
 
@@ -73,6 +72,7 @@ class DataLoader:
                     base_schema = VRDUBaseSchema
 
                 schema = None
+
                 try:
                     schema = base_schema.filter_schema(target_fields_raw)
                 except ValueError as e:
@@ -86,6 +86,30 @@ class DataLoader:
                         if common_fields
                         else None
                     )
+
+                if schema:
+                    top_fields = list(schema.model_fields.keys())
+                    self.logger.debug(f"Doc {doc_id} - Schema Felder: {top_fields}")
+
+                    if "line_items" in schema.model_fields:
+                        # Pydantic v2 Typ-Analyse
+                        field_info = schema.model_fields["line_items"]
+                        # Wir gehen durch die 'args' des Typs, um das innere Modell zu finden
+                        # Optional[List[T]] -> args[0] (List[T]) -> args[0] (T)
+                        try:
+                            # Das ist der robuste Weg:
+                            inner_type = field_info.annotation
+                            while hasattr(inner_type, "__args__"):
+                                inner_type = inner_type.__args__[0]
+
+                            li_fields = list(inner_type.model_fields.keys())
+                            self.logger.debug(
+                                f"Doc {doc_id} - Line-Item Sub-Felder erkannt: {li_fields}"
+                            )
+                        except Exception as e:
+                            self.logger.debug(
+                                f"Doc {doc_id} - Konnte Line-Item Struktur nicht parsen: {e}"
+                            )
 
                 target_fields_flat = (
                     list(target_fields_raw.keys())

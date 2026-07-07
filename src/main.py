@@ -111,7 +111,7 @@ def get_llm(provider: str, model: str, model_parameters: dict):
             top_k=model_parameters.get("top_k", 5),
             top_p=model_parameters.get("top_p", 0.1),
             seed=model_parameters.get("seed", 48),
-            max_output_tokens=model_parameters.get("max_output_tokens", 1500),
+            max_output_tokens=4096,
         )
     if provider == "ollama":
         logging.info("Loading Ollama LLM")
@@ -123,8 +123,10 @@ def get_llm(provider: str, model: str, model_parameters: dict):
             "top_k": model_parameters.get("top_k", 5),
             "top_p": model_parameters.get("top_p", 0.1),
             "seed": model_parameters.get("seed", 48),
-            "num_ctx": model_parameters.get("num_ctx", 12288),
-            "num_predict": model_parameters.get("num_predict", 1500),
+            "frequency_penalty": model_parameters.get("frequency_penalty", 0.15),
+            "presence_penalty": model_parameters.get("presence_penalty", 0.1),
+            "num_ctx": 32768,
+            "num_predict": 4096,
         }
 
         if model_parameters.get("format") == "json":
@@ -205,10 +207,12 @@ def run_experiment():
             "model": args.model,
             "temperature": 0.0,
             "seed": 48,
-            "top_k": 5,
+            "top_k": 3,
             "top_p": 0.1,
-            "num_ctx": 12288,
-            "num_predict": 1500,
+            "num_ctx": 32768,
+            "frequency_penalty": 0.15,
+            "presence_penalty": 0.1,
+            "num_predict": 4096,
         }
         llm_text = get_llm(args.provider, args.model, base_llm_params)
 

@@ -19,12 +19,23 @@ from src.data_loader import Document
 def get_document_tools(document_content: str):
 
     @tool
-    def calculate_sum(value1: float, value2: float) -> float:
+    def calculate_sum(
+        values: list,
+    ) -> float:
         """
-        Adds two numerical values together. Mandatory tool to verify
+        Adds a list of numerical values together. Mandatory tool to verify
         whether sub-amounts add up to the total gross amount.
         """
-        return value1 + value2
+        cleaned_values = []
+        for v in values:
+            if isinstance(v, (int, float)):
+                cleaned_values.append(v)
+            elif isinstance(v, str):
+                # Entferne Währungszeichen und Kommas
+                clean_str = re.sub(r"[^\d.]", "", v)
+                if clean_str:
+                    cleaned_values.append(float(clean_str))
+        return float(sum(cleaned_values))
 
     @tool
     def verify_exact_match(extracted_value: str) -> str:
@@ -69,22 +80,23 @@ class SingleAgentCondition(BaseCondition):
 
         target_fields_str = ", ".join(document.target_fields)
         system_prompt = (
-            "You are an autonomous business data extraction agent.\n"
-            f"Your task is to extract the following mandatory fields: {target_fields_str}.\n\n"
-            "MANDATORY STEPS (YOU MUST FOLLOW THIS EXACTLY):\n"
-            "STEP 1 (VERIFY): Before you do anything else, you MUST use the 'verify_exact_match' tool "
-            "to verify the exact spelling of the Advertiser and the Gross Amount.\n"
-            "STEP 2 (CALCULATE): If there are line items, you MUST use the 'calculate_sum' tool to check if they match the total.\n"
-            "STEP 3 (EXTRACT): ONLY AFTER you have received the tool observations from Step 1 and 2, "
-            "you are allowed to output the final data using the required ExtractionSchema.\n\n"
-            "CRITICAL RULES:\n"
-            "- You MUST use at least one tool before submitting the final schema.\n"
-            "- You MUST output the final ExtractionSchema in your last response.\n"
-            "- Do not fabricate values; extract texts exactly as they appear in the document.\n"
-            "- ALL field values must match the schema types exactly. NEVER invent nested dicts for plain string fields.\n"
-            "- DO NOT use markdown, backticks, or code blocks in your final output.\n"
-            "- OUTPUT STRICTLY VALID JSON ONLY in your final response.\n"
-            "- DO NOT ADD ANY CONVERSATIONAL TEXT, PREAMBLES, OR EXPLANATIONS BEFORE OR AFTER THE JSON.\n"
+            "You are an expert Data Extraction Agent for complex B2B documents. "
+            "Your goal is to extract structured data into the provided Pydantic schema.\n\n"
+            "### Tool Use \n"
+            "1. VERIFY: Call 'verify_exact_match' for 'advertiser' and 'gross_amount'.\n"
+            "2. If line items are present, use 'calculate_sum' to verify the mathematical integrity of the table.\n"
+            "3. Use tool outputs to correct your initial hypotheses. Do NOT guess.\n\n"
+            "TOOL USAGE LIMIT: You are allowed to use tools a maximum of 3 times per task."
+            "### TABLE EXTRACTION RULES\n"
+            "- Extract EVERY visible table row. DO NOT summarize.\n"
+            "- If the source document has N rows, your JSON 'line_items' MUST contain exactly N objects.\n"
+            "- Map each cell accurately. Use 'null' for missing values. Do NOT invent data.\n"
+            "- Ensure sub_amount values are extracted exactly as they appear (or as decimals if requested).\n\n"
+            "### OUTPUT FORMATTING (STRICT)\n"
+            "- Output ONLY a raw, valid JSON object. No Markdown, no backticks, no explanatory text.\n"
+            "- Your final message must contain nothing else but the JSON string.\n"
+            "- Ensure strict type adherence to the provided ExtractionSchema.\n"
+            "- If you fail to produce valid JSON, the extraction is considered a total failure."
         )
 
         agent = create_agent(

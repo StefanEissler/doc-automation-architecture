@@ -73,7 +73,7 @@ class MultiAgentCondition(BaseCondition):
         prompt = [
             SystemMessage(
                 content=(
-                    "You are a Planner Agent for broadcast advertising document extraction.\n"
+                    "You are a Senior Data Architect and Planner for broadcast advertising document extraction.\n"
                     "Your ONLY job is to analyze the document structure and write a strategy "
                     "for the Extractor Agent. DO NOT extract any values yourself.\n\n"
                     f"The Extractor must find these fields: {', '.join(state.get('target_fields'))}\n\n"
@@ -85,6 +85,7 @@ class MultiAgentCondition(BaseCondition):
                     "   - identifier numbers may appear with prefixes like 'Contract #' — strip them\n"
                     "   - IDs appear in parentheses and must be included\n"
                     "3. Note any OCR artifacts or unusual formatting the Extractor should handle.\n\n"
+                    "4. Identify the line_items table structure and its fields. If the document contains a table of line items, scan for the table boundries."
                     "Write a numbered, field-by-field strategy the Extractor can follow directly."
                 )
             ),

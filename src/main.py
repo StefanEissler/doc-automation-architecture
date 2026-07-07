@@ -6,6 +6,10 @@ import subprocess
 import time
 from time import perf_counter
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 import requests
 
@@ -72,8 +76,8 @@ def get_llm(provider: str, model: str, model_parameters: dict):
 
     if provider == "google":
         logging.info(f"Loading Google Gemini API LLM: {model}")
-        if not os.environ.get("GOOGLE_API_KEY"):  # noqa: F821
-            raise ValueError("GOOGLE_API_KEY environment variable is missing!")
+        if not os.environ.get("GEMINI_API_KEY"):  # noqa: F821
+            raise ValueError("GEMINI_API_KEY environment variable is missing!")
 
         return ChatGoogleGenerativeAI(
             model=model,
@@ -244,6 +248,7 @@ def run_experiment():
 
             # Send to sleep to not hit the rate limit of the Google Gemini API
             if args.provider == "google":
+                logging.info("Sleeping for 15 seconds to avoid rate limit.")
                 time.sleep(15)
 
         logging.info("Experiment completed successfully.")

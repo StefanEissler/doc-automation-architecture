@@ -87,8 +87,6 @@ class DataLoader:
                         else None
                     )
 
-                self._log_schema_details(doc_id, target_fields_raw, schema)
-
                 target_fields_flat = (
                     list(target_fields_raw.keys())
                     if isinstance(target_fields_raw, dict)

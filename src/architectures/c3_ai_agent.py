@@ -120,6 +120,16 @@ class SingleAgentCondition(BaseCondition):
             self.logger.debug(result)
 
             last_content = result["messages"][-1].content if result["messages"] else ""
+
+            if isinstance(last_content, list):
+                text_parts = []
+                for part in last_content:
+                    if isinstance(part, dict) and "text" in part:
+                        text_parts.append(part["text"])
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                last_content = " ".join(text_parts)
+
             if last_content:
                 parser = JsonOutputParser()
                 try:

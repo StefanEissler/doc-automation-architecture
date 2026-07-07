@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Dict, Optional, Tuple
 
@@ -21,13 +22,16 @@ class SinglePromptCondition(BaseCondition):
             self.logger.error(f"Doc {document.id} has no valid Schema.")
             return {}, {}, "No schema available"
 
-        target_fields_str = ", ".join(document.target_fields)
+        schema_json_template = json.dumps(
+            ExtractionSchema.model_json_schema(), indent=2
+        )
 
         system_msg = SystemMessage(
             content=(
                 "You are an expert data extraction assistant specialized in B2B forms and invoices.\n"
                 "Your task is to extract exact values from the provided OCR text according to the required schema.\n"
-                f"These are the target fields to extract: {target_fields_str}.\n"
+                "Extract data into this JSON structure:.\n"
+                f"{schema_json_template}\n"
                 "You MUST extract all tabular rows into the line_items array.\n"
                 "If a value is missing, return null. Do NOT create or hallucinate any data!\n\n"
                 "CRITICAL INSTRUCTIONS FOR JSON VALUES:\n"

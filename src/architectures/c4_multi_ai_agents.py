@@ -143,6 +143,9 @@ class MultiAgentCondition(BaseCondition):
         )
 
         ExtractionSchema = state["schema_class"]
+        schema_json_template = json.dumps(
+            ExtractionSchema.model_json_schema(), indent=2
+        )
 
         if not ExtractionSchema:
             self.logger.error("C4: No schema available!")
@@ -169,6 +172,8 @@ class MultiAgentCondition(BaseCondition):
         system_prompt = (
             "You are a precise data extraction agent for business documents.\n\n"
             f"Extract ONLY these fields: {', '.join(state['target_fields'])}\n\n"
+            "Extract data into this JSON structure:.\n"
+            f"{schema_json_template}\n"
             f"PLANNER STRATEGY:\n{strategy}\n\n"
             f"{feedback_block}"
             "GENERAL RULES:\n"
@@ -181,7 +186,7 @@ class MultiAgentCondition(BaseCondition):
         prompt = [
             SystemMessage(content=system_prompt),
             HumanMessage(
-                content=f"<DOCUMENT>\n{state['document_content']}\n</DOCUMENT>"
+                content=(f"<DOCUMENT>\n{state['document_content']}\n</DOCUMENT>")
             ),
         ]
 

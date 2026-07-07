@@ -78,10 +78,15 @@ class SingleAgentCondition(BaseCondition):
 
         doc_tools = get_document_tools(document.content)
 
-        target_fields_str = ", ".join(document.target_fields)
+        schema_json_template = json.dumps(
+            ExtractionSchema.model_json_schema(), indent=2
+        )
+
         system_prompt = (
             "You are an expert Data Extraction Agent for complex B2B documents. "
             "Your goal is to extract structured data into the provided Pydantic schema.\n\n"
+            "Extract data into this JSON structure:\n"
+            f"{schema_json_template}.\n"
             "### Tool Use \n"
             "1. VERIFY: Call 'verify_exact_match' for 'advertiser' and 'gross_amount'.\n"
             "2. If line items are present, use 'calculate_sum' to verify the mathematical integrity of the table.\n"
@@ -112,7 +117,6 @@ class SingleAgentCondition(BaseCondition):
             f"{document.content}\n"
             "</DOCUMENT>\n\n"
             "<TASK_REQUIREMENTS>\n"
-            f"Extract the following fields: {target_fields_str}.\n"
             "1. Analyze the document context carefully to avoid hallucinations.\n"
             "2. If a field value is not explicitly present, return 'null'.\n"
             "3. Use the required tools for fact-checking before submitting your final structured answer.\n"

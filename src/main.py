@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 from pathlib import Path
 import argparse
@@ -5,10 +6,6 @@ import logging
 import subprocess
 import time
 from time import perf_counter
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 import requests
@@ -22,14 +19,43 @@ from src.architectures.c4_multi_ai_agents import MultiAgentCondition
 from src.data_loader import DataLoader
 from src.evaluation import BenchmarkEvaluator
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-# Basic Logging Configuration
-def setup_logging(level_name: str):
-    logging.basicConfig(
-        level=level_name.upper(), format="%(asctime)s - %(levelname)s - %(message)s"
+def setup_logging(level_name: str, experiment: str, model: str, provider: str):
+    log_format = "%(asctime)s - %(levelname)s - %(message)s"
+    level = getattr(logging, level_name.upper(), logging.INFO)
+
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    # (z.B. logs/benchmark_ExpA_google_gemini-3.5-flash_20260707_143000.log)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_model_name = model.replace("/", "-").replace(":", "-")
+    log_filename = (
+        log_dir
+        / f"benchmark_experiment_{experiment}_{provider}_{safe_model_name}_{timestamp}.log"
     )
+
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(log_format))
+    logger.addHandler(console_handler)
+
+    file_handler = logging.FileHandler(log_filename, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(log_format))
+    logger.addHandler(file_handler)
+
+    logging.info(f"Logging initialized. Log-File will be saved to: {log_filename}")
 
 
 def is_ollama_server_running(
@@ -164,7 +190,7 @@ def run_experiment():
 
         args = parser.parse_args()
 
-        setup_logging(args.log)
+        setup_logging(args.log, args.experiment, args.model, args.provider)
         logging.info("Starting Document Automation Benchmark Experiment")
 
         evaluator = BenchmarkEvaluator(

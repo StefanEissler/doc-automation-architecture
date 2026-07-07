@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import logging
 import subprocess
+import time
 from time import perf_counter
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -74,16 +75,32 @@ def get_llm(provider: str, model: str, model_parameters: dict):
         if not os.environ.get("GOOGLE_API_KEY"):  # noqa: F821
             raise ValueError("GOOGLE_API_KEY environment variable is missing!")
 
-        # from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
             model=model,
-            temperature=0.0,
-            max_output_tokens=model_parameters.get("num_predict", 1500),
+            temperature=model_parameters.get("temperature", 0.0),
+            top_k=model_parameters.get("top_k", 5),
+            top_p=model_parameters.get("top_p", 0.1),
+            seed=model_parameters.get("seed", 48),
+            max_output_tokens=model_parameters.get("max_output_tokens", 1500),
         )
     if provider == "ollama":
         logging.info("Loading Ollama LLM")
         download_ollama_model(model)
-        return ChatOllama(**model_parameters, client_kwargs={"timeout": 300.0})
+
+        ollama_kwargs = {
+            "model": model,
+            "temperature": model_parameters.get("temperature", 0.0),
+            "top_k": model_parameters.get("top_k", 5),
+            "top_p": model_parameters.get("top_p", 0.1),
+            "seed": model_parameters.get("seed", 48),
+            "num_ctx": model_parameters.get("num_ctx", 12288),
+            "num_predict": model_parameters.get("num_predict", 1500),
+        }
+
+        if model_parameters.get("format") == "json":
+            ollama_kwargs["format"] = "json"
+
+        return ChatOllama(**ollama_kwargs, client_kwargs={"timeout": 300.0})
     else:
         raise ValueError(f"Provider {provider} nicht unterstützt.")
 
@@ -123,7 +140,7 @@ def run_experiment():
         parser.add_argument(
             "--provider",
             type=str,
-            choices=["vertex", "ollama"],
+            choices=["google", "ollama"],
             default="ollama",
             help="LLM provider to use for conditions C2-C4",
         )
@@ -200,12 +217,11 @@ def run_experiment():
 
                 start = perf_counter()
                 try:
-                    # error_msg ist None bei Erfolg, ein String bei internen
+                    # error_msg is None when succesfull
                     prediction, meta_data, error_msg = condition_instance.extract_data(
                         doc
                     )
                 except Exception as e:
-                    # Harter System-Absturz den die Condition nicht intern abgefangen hat.
                     error_msg = f"{type(e).__name__}: {e}"
                     logging.error(
                         f"Hard failure in {condition_id} for doc {doc.id}: {e}"
@@ -225,6 +241,10 @@ def run_experiment():
                     model=args.model if condition_id == "C1" "" else args.model,
                     error=error_msg,
                 )
+
+            # Send to sleep to not hit the rate limit of the Google Gemini API
+            if args.provider == "google":
+                time.sleep(15)
 
         logging.info("Experiment completed successfully.")
 

@@ -135,41 +135,50 @@ class SingleAgentCondition(BaseCondition):
             result = agent.invoke({"messages": [HumanMessage(content=task_prompt)]})
             self.logger.debug(result)
 
-            last_content = result["messages"][-1].content if result["messages"] else ""
+            structured = result.get("structured_response")
+            if structured is not None:
+                extracted_data = structured.model_dump()
+            else:
 
-            if isinstance(last_content, list):
-                text_parts = []
-                for part in last_content:
-                    if isinstance(part, dict) and "text" in part:
-                        text_parts.append(part["text"])
-                    elif isinstance(part, str):
-                        text_parts.append(part)
-                last_content = " ".join(text_parts)
+                last_content = (
+                    result["messages"][-1].content if result["messages"] else ""
+                )
 
-            if last_content:
-                parser = JsonOutputParser()
-                try:
-                    # Standard-Parser to validate and parse the JSON output
-                    extracted_data = parser.invoke(last_content)
-                except Exception as parse_e:
-                    self.logger.warning(
-                        "C3: Standard-Parser failed, trying Regex-Fallback."
-                    )
+                if isinstance(last_content, list):
+                    text_parts = []
+                    for part in last_content:
+                        if isinstance(part, dict) and "text" in part:
+                            text_parts.append(part["text"])
+                        elif isinstance(part, str):
+                            text_parts.append(part)
+                    last_content = " ".join(text_parts)
+
+                if last_content:
+                    parser = JsonOutputParser()
                     try:
-                        # Try with regex fallback to extract JSON block
-                        match = re.search(r"\{.*\}", last_content, re.DOTALL)
-                        if match:
-                            extraction_retry = 1
-                            json_str = match.group(0)
-                            extracted_data = json.loads(json_str)
-                            self.logger.info("C3: Regex-Fallback erfolgreich.")
-                        else:
-                            raise ValueError("Kein JSON-Block in der Antwort gefunden.")
-                    except Exception as regex_e:
-                        self.logger.error(
-                            f"C3: Schema-Validation final failed! Parser: {parse_e}, Regex: {regex_e}. Content was: {last_content[:100]}..."
+                        # Standard-Parser to validate and parse the JSON output
+                        extracted_data = parser.invoke(last_content)
+                    except Exception as parse_e:
+                        self.logger.warning(
+                            "C3: Standard-Parser failed, trying Regex-Fallback."
                         )
-                        extracted_data = {}
+                        try:
+                            # Try with regex fallback to extract JSON block
+                            match = re.search(r"\{.*\}", last_content, re.DOTALL)
+                            if match:
+                                extraction_retry = 1
+                                json_str = match.group(0)
+                                extracted_data = json.loads(json_str)
+                                self.logger.info("C3: Regex-Fallback erfolgreich.")
+                            else:
+                                raise ValueError(
+                                    "Kein JSON-Block in der Antwort gefunden."
+                                )
+                        except Exception as regex_e:
+                            self.logger.error(
+                                f"C3: Schema-Validation final failed! Parser: {parse_e}, Regex: {regex_e}. Content was: {last_content[:100]}..."
+                            )
+                            extracted_data = {}
 
             # Token-Tracking and Tool-Tracking from Message-History
             for msg in result.get("messages", []):

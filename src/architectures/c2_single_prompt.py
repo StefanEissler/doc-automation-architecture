@@ -20,7 +20,11 @@ class SinglePromptCondition(BaseCondition):
 
         if not ExtractionSchema:
             self.logger.error(f"Doc {document.id} has no valid Schema.")
-            return {}, {}, "No schema available"
+            return (
+                {},
+                {"input_tokens": 0, "output_tokens": 0, "tokens": 0},
+                "No schema available",
+            )
 
         schema_json_template = json.dumps(
             ExtractionSchema.model_json_schema(), indent=2
@@ -50,7 +54,6 @@ class SinglePromptCondition(BaseCondition):
             )
         )
 
-        # Strukturierten Output erzwingen und Rohdaten für Token-Tracking anfordern
         structured_llm = self.llm.with_structured_output(
             ExtractionSchema, include_raw=True
         )
@@ -69,7 +72,7 @@ class SinglePromptCondition(BaseCondition):
             raw_message = response.get("raw")
 
             if parsed_data:
-                extracted_data = parsed_data.dict()
+                extracted_data = parsed_data.model_dump()
             else:
                 error_msg = "LLM has no returned a valid Schema."
 

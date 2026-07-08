@@ -143,9 +143,6 @@ class MultiAgentCondition(BaseCondition):
         )
 
         ExtractionSchema = state["schema_class"]
-        schema_json_template = json.dumps(
-            ExtractionSchema.model_json_schema(), indent=2
-        )
 
         if not ExtractionSchema:
             self.logger.error("C4: No schema available!")
@@ -155,6 +152,10 @@ class MultiAgentCondition(BaseCondition):
                 "input_tokens": state.get("input_tokens", 0),
                 "output_tokens": state.get("output_tokens", 0),
             }
+
+        schema_json_template = json.dumps(
+            ExtractionSchema.model_json_schema(), indent=2
+        )
 
         strategy = state.get("planner_strategy", "")
         feedback = state.get("validation_errors", "")

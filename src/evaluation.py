@@ -408,6 +408,7 @@ class BenchmarkEvaluator:
             "output_tokens": metadata.get("output_tokens"),
             "all_tokens": metadata.get("tokens"),
             "retries_used": metadata.get("retries_used", 0),
+            # "tools_used": metadata.get("used_tools", []),
             "duration_seconds": duration_seconds,
             "match_results_fields": json.dumps(
                 schema_match_results, ensure_ascii=False

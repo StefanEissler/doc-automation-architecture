@@ -1,0 +1,5 @@
+;Quadratsumme;df;F;p (Pr > F);partielles η²
+Bedingung (Condition);11,75;3;69,34;< 0,001;0,419
+Komplexität (Complexity);12,19;2;107,9;< 0,001;0,428
+Wechselwirkung (Condition x Complexity);1,74;6;5,14;< 0,001;0,097
+Residuen (Fehler);16,27;288;;;

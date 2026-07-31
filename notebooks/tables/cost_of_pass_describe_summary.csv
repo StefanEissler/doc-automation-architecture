@@ -1,0 +1,11 @@
+Statistik;C1: RPA;C2: Single-Prompt;C3: Single-Agent;C4: Multi-Agent
+Anzahl (N);75,00;75,00;75,00;75,00
+Mittelwert (M);401,54;254,02;261,24;356,36
+Standardabweichung (SD);62,26;152,20;154,37;197,83
+Minimum;148,99;0,28;0,28;0,35
+5%-Perzentil;298,01;0,37;36,34;63,15
+25%-Perzentil (Q1);372,51;118,49;124,46;171,26
+50%-Perzentil (Median);430,46;252,27;226,34;383,97
+75%-Perzentil (Q3);447,00;411,53;415,77;477,46
+95%-Perzentil;447,00;453,78;455,20;678,19
+Maximum;447,00;456,85;462,68;855,79

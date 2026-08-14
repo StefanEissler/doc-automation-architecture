@@ -1,0 +1,4 @@
+﻿Effekt;Quadratsumme (SS);df (Zähler);df (Nenner);F-Wert;p;partielles η²
+Komplexität (Zwischensubjekt);11,03;2;72;34,47;< 0,001;0,489
+Bedingung (Innersubjekt);7,68;3;216;52,20;< 0,001;0,420
+Interaktion (Komplexität × Bedingung);1,04;6;216;3,52;0,002;0,089

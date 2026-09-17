@@ -1,0 +1,10 @@
+Statistik;C1;C2;C3;C4
+Mittelwert (M);2,62;1,67;1,73;2,61
+Standardabweichung (SD);0,41;0,99;1,01;1,53
+Minimum;0,97;0,01;0,02;0,08
+5%-Perzentil;1,94;0,08;0,29;0,46
+25%-Perzentil (Q1);2,43;0,78;0,83;1,17
+50%-Perzentil (Median);2,81;1,66;1,49;2,73
+75%-Perzentil (Q3);2,92;2,70;2,74;3,37
+95%-Perzentil;2,92;2,98;3,00;5,23
+Maximum;2,92;3,02;3,07;7,00
